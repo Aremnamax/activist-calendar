@@ -11,6 +11,7 @@ import { useAuthStore } from '@/store/authStore'
 import Layout from '@/components/Layout'
 import EventModal from '@/components/EventModal'
 import EventRequestForm from '@/components/EventRequestForm'
+import DayEventsModal from '@/components/DayEventsModal'
 import { EVENT_LABELS } from '@/lib/constants'
 
 moment.locale('ru')
@@ -80,19 +81,22 @@ interface CustomToolbarProps extends ToolbarProps<CalEvent, object> {
   setFilterDepts?: (ids: number[] | ((prev: number[]) => number[])) => void
   filterDropdownOpen?: boolean
   setFilterDropdownOpen?: (v: boolean) => void
+  onRequestClick?: () => void
+  isOrganizer?: boolean
 }
 
-function CustomToolbar({ label, onNavigate, onView, view, departments = [], filterDepts = [], setFilterDepts, filterDropdownOpen, setFilterDropdownOpen }: CustomToolbarProps) {
+function CustomToolbar({ label, onNavigate, onView, view, departments = [], filterDepts = [], setFilterDepts, filterDropdownOpen, setFilterDropdownOpen, onRequestClick, isOrganizer }: CustomToolbarProps) {
   const [viewDropdownOpen, setViewDropdownOpen] = useState(false)
   const viewButtonRef = useRef<HTMLButtonElement>(null)
-  const filterButtonRef = useRef<HTMLButtonElement>(null)
+  const filterButtonRefDesktop = useRef<HTMLButtonElement>(null)
+  const filterButtonRefMobile = useRef<HTMLButtonElement>(null)
   const [viewDropdownRect, setViewDropdownRect] = useState<DOMRect | null>(null)
   const [filterDropdownRect, setFilterDropdownRect] = useState<DOMRect | null>(null)
 
   useEffect(() => {
     if (viewDropdownOpen && viewButtonRef.current) {
-      const update = () => setViewDropdownRect(viewButtonRef.current!.getBoundingClientRect())
-      update()
+      const update = () => viewButtonRef.current && setViewDropdownRect(viewButtonRef.current.getBoundingClientRect())
+      requestAnimationFrame(update)
       window.addEventListener('scroll', update, true)
       window.addEventListener('resize', update)
       return () => { window.removeEventListener('scroll', update, true); window.removeEventListener('resize', update) }
@@ -100,10 +104,16 @@ function CustomToolbar({ label, onNavigate, onView, view, departments = [], filt
     setViewDropdownRect(null)
   }, [viewDropdownOpen])
 
+  const DROPDOWN_W = 224
   useEffect(() => {
-    if (filterDropdownOpen && filterButtonRef.current) {
-      const update = () => setFilterDropdownRect(filterButtonRef.current!.getBoundingClientRect())
-      update()
+    if (filterDropdownOpen) {
+      const update = () => {
+        const isDesktop = typeof window !== 'undefined' && window.innerWidth >= 640
+        const btn = isDesktop ? filterButtonRefDesktop.current : filterButtonRefMobile.current
+        if (btn) setFilterDropdownRect(btn.getBoundingClientRect())
+        else setFilterDropdownRect(null)
+      }
+      requestAnimationFrame(update)
       window.addEventListener('scroll', update, true)
       window.addEventListener('resize', update)
       return () => { window.removeEventListener('scroll', update, true); window.removeEventListener('resize', update) }
@@ -164,12 +174,12 @@ function CustomToolbar({ label, onNavigate, onView, view, departments = [], filt
           </button>
         </div>
 
-        {/* Right: filter + today button */}
+        {/* Right: filter + add event button */}
         <div className="flex items-center justify-end gap-2">
           {departments.length > 0 && setFilterDepts && setFilterDropdownOpen && (
             <div className="relative">
               <button
-                ref={filterButtonRef}
+                ref={filterButtonRefDesktop}
                 onClick={() => setFilterDropdownOpen(!filterDropdownOpen)}
                 className="flex items-center gap-2 px-3 py-1.5 rounded-xl border border-prof-pine/15 bg-white/80 text-sm font-semibold text-prof-black hover:bg-prof-mint/30 transition-all"
               >
@@ -180,50 +190,18 @@ function CustomToolbar({ label, onNavigate, onView, view, departments = [], filt
                     : `Выбрано: ${filterDepts.length}`}
                 <svg className={`w-3.5 h-3.5 transition-transform ${filterDropdownOpen ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
               </button>
-              {filterDropdownOpen && filterDropdownRect && createPortal(
-                <>
-                  <div className="fixed inset-0 z-[9998]" onClick={() => setFilterDropdownOpen(false)} />
-                  <div
-                    className="fixed w-56 max-h-64 overflow-y-auto rounded-xl border border-prof-pine/12 bg-white shadow-modal z-[9999] py-2"
-                    style={{ left: filterDropdownRect.right - 224, top: filterDropdownRect.bottom + 8 }}
-                  >
-                    {departments.map(d => {
-                      const isChecked = filterDepts.includes(d.id)
-                      return (
-                        <label
-                          key={d.id}
-                          className="flex items-center gap-2.5 px-3 py-2 hover:bg-prof-mint/20 cursor-pointer text-sm font-medium"
-                        >
-                          <input
-                            type="checkbox"
-                            checked={isChecked}
-                            onChange={() => {
-                              setFilterDepts(prev =>
-                                prev.includes(d.id)
-                                  ? prev.filter(x => x !== d.id)
-                                  : [...prev, d.id]
-                              )
-                            }}
-                            className="rounded border-prof-pine/30 text-prof-pacific focus:ring-prof-pacific"
-                          />
-                          <span className="w-[6px] h-[6px] rounded-full shrink-0" style={{ backgroundColor: d.color }} />
-                          {d.name}
-                        </label>
-                      )
-                    })}
-                    {filterDepts.length > 0 && (
-                      <button
-                        onClick={() => { setFilterDepts([]); setFilterDropdownOpen(false) }}
-                        className="w-full mt-2 pt-2 border-t border-prof-pine/8 text-xs font-bold text-prof-pacific hover:text-prof-pine px-3"
-                      >
-                        Сбросить
-                      </button>
-                    )}
-                  </div>
-                </>,
-                document.body
-              )}
             </div>
+          )}
+          {isOrganizer && onRequestClick && (
+            <button
+              onClick={onRequestClick}
+              className="flex h-9 w-9 items-center justify-center rounded-xl text-white gradient-prof shadow-md hover:shadow-lg transform hover:-translate-y-0.5 transition-all"
+              title="Подать мероприятие"
+            >
+              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
+              </svg>
+            </button>
           )}
         </div>
       </div>
@@ -289,41 +267,65 @@ function CustomToolbar({ label, onNavigate, onView, view, departments = [], filt
             {departments.length > 0 && setFilterDepts && setFilterDropdownOpen && (
             <div className="relative">
               <button
-                ref={filterButtonRef}
+                ref={filterButtonRefMobile}
                 onClick={() => setFilterDropdownOpen(!filterDropdownOpen)}
                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-prof-pine/15 bg-white/80 text-sm font-semibold text-prof-black"
               >
                 {filterDepts.length === 0 ? 'Подразделения' : filterDepts.length === 1 ? departments.find(d => d.id === filterDepts[0])?.name : `Выбрано: ${filterDepts.length}`}
                 <svg className={`w-3.5 h-3.5 ${filterDropdownOpen ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
               </button>
-              {filterDropdownOpen && filterDropdownRect && createPortal(
-                <>
-                  <div className="fixed inset-0 z-[9998]" onClick={() => setFilterDropdownOpen(false)} />
-                  <div
-                    className="fixed w-56 max-h-64 overflow-y-auto rounded-xl border border-prof-pine/12 bg-white shadow-modal z-[9999] py-2"
-                    style={{ left: filterDropdownRect.left + (filterDropdownRect.width - 224) / 2, top: filterDropdownRect.bottom + 8 }}
-                  >
-                    {departments.map(d => (
-                      <label key={d.id} className="flex items-center gap-2.5 px-3 py-2 hover:bg-prof-mint/20 cursor-pointer text-sm font-medium">
-                        <input type="checkbox" checked={filterDepts.includes(d.id)} onChange={() => setFilterDepts(prev => prev.includes(d.id) ? prev.filter(x => x !== d.id) : [...prev, d.id])} className="rounded border-prof-pine/30 text-prof-pacific focus:ring-prof-pacific" />
-                        <span className="w-[6px] h-[6px] rounded-full shrink-0" style={{ backgroundColor: d.color }} />
-                        {d.name}
-                      </label>
-                    ))}
-                    {filterDepts.length > 0 && (
-                      <button onClick={() => { setFilterDepts([]); setFilterDropdownOpen(false) }} className="w-full mt-2 pt-2 border-t border-prof-pine/8 text-xs font-bold text-prof-pacific px-3">
-                        Сбросить
-                      </button>
-                    )}
-                  </div>
-                </>,
-                document.body
-              )}
             </div>
           )}
+            {isOrganizer && onRequestClick && (
+              <button
+                onClick={onRequestClick}
+                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-white gradient-prof shadow-md hover:shadow-lg"
+                title="Подать мероприятие"
+              >
+                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
+                </svg>
+              </button>
+            )}
           </div>
         </div>
       </div>
+
+      {/* Единый портал для выпадающего списка подразделений */}
+      {filterDropdownOpen && filterDropdownRect && departments.length > 0 && setFilterDepts && setFilterDropdownOpen && createPortal(
+        <>
+          <div className="fixed inset-0 z-[9998]" onClick={() => setFilterDropdownOpen(false)} />
+          <div
+            className="fixed w-56 max-h-64 overflow-y-auto rounded-xl border border-prof-pine/12 bg-white shadow-modal z-[9999] py-2"
+            style={{
+              left: (() => {
+                const isDesktop = typeof window !== 'undefined' && window.innerWidth >= 640
+                const pad = 8
+                const maxLeft = typeof window !== 'undefined' ? window.innerWidth - DROPDOWN_W - pad : 0
+                const left = isDesktop
+                  ? Math.max(pad, Math.min(filterDropdownRect.right - DROPDOWN_W, maxLeft))
+                  : Math.max(pad, Math.min(filterDropdownRect.left + (filterDropdownRect.width - DROPDOWN_W) / 2, maxLeft))
+                return left
+              })(),
+              top: filterDropdownRect.bottom + 8,
+            }}
+          >
+            {departments.map(d => (
+              <label key={d.id} className="flex items-center gap-2.5 px-3 py-2 hover:bg-prof-mint/20 cursor-pointer text-sm font-medium">
+                <input type="checkbox" checked={filterDepts.includes(d.id)} onChange={() => setFilterDepts(prev => prev.includes(d.id) ? prev.filter(x => x !== d.id) : [...prev, d.id])} className="rounded border-prof-pine/30 text-prof-pacific focus:ring-prof-pacific" />
+                <span className="w-[6px] h-[6px] rounded-full shrink-0" style={{ backgroundColor: d.color }} />
+                {d.name}
+              </label>
+            ))}
+            {filterDepts.length > 0 && (
+              <button onClick={() => { setFilterDepts([]); setFilterDropdownOpen(false) }} className="w-full mt-2 pt-2 border-t border-prof-pine/8 text-xs font-bold text-prof-pacific px-3">
+                Сбросить
+              </button>
+            )}
+          </div>
+        </>,
+        document.body
+      )}
     </div>
   )
 }
@@ -343,7 +345,7 @@ export default function CalendarPage() {
   const [filterDepts, setFilterDepts] = useState<number[]>([])
   const [filterLabels, setFilterLabels] = useState<string[]>([])
   const [filterDropdownOpen, setFilterDropdownOpen] = useState(false)
-  const [subscribedDepts, setSubscribedDepts] = useState<number[]>([])
+  const [dayEventsModal, setDayEventsModal] = useState<{ events: CalEvent[]; date: Date } | null>(null)
 
   const isOrganizer = user?.role === 'organizer' || user?.role === 'admin'
 
@@ -373,10 +375,6 @@ export default function CalendarPage() {
 
   useEffect(() => { loadEvents() }, [loadEvents])
   useEffect(() => { api.get('/departments').then(r => setDepartments(r.data || [])).catch(() => {}) }, [])
-  useEffect(() => {
-    if (!isAuthenticated) return
-    api.get('/users/me').then(r => setSubscribedDepts(r.data?.subscribedDepartments || [])).catch(() => {})
-  }, [isAuthenticated])
   useEffect(() => {
     if (!isAuthenticated) return
     api.get('/subscriptions/my').then(r => {
@@ -457,15 +455,6 @@ export default function CalendarPage() {
     [requestFormDate]
   )
 
-  const toggleDeptSubscription = async (deptId: number) => {
-    if (!isAuthenticated) return
-    const next = subscribedDepts.includes(deptId)
-      ? subscribedDepts.filter(d => d !== deptId)
-      : [...subscribedDepts, deptId]
-    setSubscribedDepts(next)
-    try { await api.patch('/users/me/departments', { departmentIds: next }) } catch {}
-  }
-
   if (loading && allEvents.length === 0) {
     return (
       <Layout>
@@ -482,31 +471,23 @@ export default function CalendarPage() {
     )
   }
 
+  const handleRequestClick = () => {
+    setRequestFormDate('')
+    setShowRequestForm(true)
+  }
+
+  const handleShowMore = (events: CalEvent[], date: Date) => {
+    setDayEventsModal({ events, date })
+  }
+
+  const handleDayEventSelect = (event: CalEvent) => {
+    setSelectedEvent(event)
+  }
+
   return (
     <Layout>
-      {/* Toolbar */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
-        <div>
-          <h1 className="text-2xl font-bold text-prof-black">Календарь</h1>
-          <p className="text-sm text-prof-black/40 mt-0.5">Все мероприятия профсоюза</p>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          {isOrganizer && (
-            <button
-              onClick={() => { setRequestFormDate(''); setShowRequestForm(true) }}
-              className="text-sm font-bold px-5 py-2.5 rounded-xl text-white gradient-prof shadow-md hover:shadow-lg transform hover:-translate-y-0.5 transition-all flex items-center gap-2"
-            >
-              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
-              </svg>
-              Подать мероприятие
-            </button>
-          )}
-        </div>
-      </div>
-
-      {/* Calendar — на мобильных: меньше отступов, больше места */}
-      <div className="glass-panel rounded-2xl p-3 sm:p-6 calendar-mobile">
+      <div className="h-[calc(100dvh-3.5rem-2rem)] md:h-[calc(100vh-2rem)] flex flex-col">
+        <div className="glass-panel rounded-none md:rounded-2xl p-3 sm:p-6 flex-1 min-h-0 flex flex-col calendar-mobile">
         <Calendar
           localizer={localizer}
           events={sortedEvents}
@@ -519,8 +500,11 @@ export default function CalendarPage() {
           eventPropGetter={eventStyleGetter}
           onSelectEvent={(e) => setSelectedEvent(e as CalEvent)}
           onSelectSlot={handleSelectSlot}
+          onShowMore={handleShowMore}
+          popup={false}
+          doShowMoreDrillDown={false}
           selectable={isOrganizer}
-          style={{ minHeight: 600 }}
+          style={{ minHeight: 0, flex: 1, height: '100%' }}
           components={{
             toolbar: (props: ToolbarProps<CalEvent, object>) => (
               <CustomToolbar
@@ -530,6 +514,8 @@ export default function CalendarPage() {
                 setFilterDepts={setFilterDepts}
                 filterDropdownOpen={filterDropdownOpen}
                 setFilterDropdownOpen={setFilterDropdownOpen}
+                onRequestClick={handleRequestClick}
+                isOrganizer={isOrganizer}
               />
             ),
             event: EventWithView,
@@ -537,40 +523,17 @@ export default function CalendarPage() {
           messages={{ showMore: (count) => `+${count}` }}
           culture="ru"
         />
+        </div>
       </div>
 
-      {/* Department subscriptions (main page) */}
-      {isAuthenticated && departments.length > 0 && (
-        <div className="mt-5 rounded-2xl px-5 py-4 bg-white/80 border border-prof-pine/8 shadow-card backdrop-blur-sm">
-          <h3 className="text-sm font-bold text-prof-black/60 uppercase tracking-wider mb-3">Подписки на подразделения</h3>
-          <p className="text-xs text-prof-black/50 mb-3">Получайте уведомления о новых мероприятиях выбранных подразделений</p>
-          <div className="flex flex-wrap gap-2">
-            {departments.map(d => {
-              const isActive = subscribedDepts.includes(d.id)
-              return (
-                <button
-                  key={d.id}
-                  onClick={() => toggleDeptSubscription(d.id)}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold border transition-all"
-                  style={{
-                    backgroundColor: isActive ? d.color : 'transparent',
-                    color: isActive ? '#fff' : d.color,
-                    borderColor: isActive ? d.color : d.color + '40',
-                  }}
-                >
-                  <span className="w-[6px] h-[6px] rounded-full" style={{ backgroundColor: isActive ? '#fff' : d.color, opacity: isActive ? 0.6 : 1 }} />
-                  {d.name}
-                  {isActive && (
-                    <svg className="w-3 h-3 ml-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>
-                  )}
-                </button>
-              )
-            })}
-          </div>
-        </div>
-      )}
-
       {/* Modals */}
+      <DayEventsModal
+        events={dayEventsModal?.events ?? []}
+        date={dayEventsModal?.date ?? new Date()}
+        isOpen={!!dayEventsModal}
+        onClose={() => setDayEventsModal(null)}
+        onSelectEvent={handleDayEventSelect}
+      />
       <EventModal
         event={selectedEvent}
         isOpen={!!selectedEvent}

@@ -102,13 +102,19 @@ body {
 
 .rbc-today { background: rgba(221,255,239,0.5) !important; }
 
+.rbc-row-segment {
+  padding: 0 1px 1px 1px !important;
+}
+
 .rbc-event {
-  border-radius: 6px !important;
-  padding: 3px 8px !important;
+  border-radius: 5px !important;
+  padding: 2px 8px !important;
   font-size: 12px !important;
   font-weight: 600 !important;
+  line-height: 1.2 !important;
   border: none !important;
-  box-shadow: 0 1px 6px rgba(0,0,0,.1);
+  box-shadow: none !important;
+  margin: 0 !important;
 }
 
 .rbc-event:hover { filter: brightness(1.08); transition: all .15s ease; }
@@ -116,16 +122,24 @@ body {
 /* month view events (timed + multiday): name left, time right, colored block, no dots */
 .rbc-event.rbc-event--timed {
   min-height: auto !important;
-  padding: 3px 6px !important;
+  padding: 2px 6px !important;
   box-shadow: none !important;
 }
 .rbc-event.rbc-event--timed .rbc-event-timed {
   display: flex !important;
   align-items: center !important;
   justify-content: space-between !important;
-  gap: 8px !important;
+  gap: 6px !important;
   width: 100% !important;
+  min-width: 0 !important;
+  line-height: 1.2 !important;
   text-align: left !important;
+}
+.rbc-event.rbc-event--timed .rbc-event-timed > span:first-child {
+  min-width: 0 !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+  white-space: nowrap !important;
 }
 
 /* day/week: events sized by library (top/height %), don't override */
@@ -134,20 +148,41 @@ body {
   flex-direction: column !important;
   justify-content: flex-start !important;
   align-items: stretch !important;
-  padding: 6px 10px !important;
+  padding: 4px 10px !important;
   font-size: 13px !important;
+  line-height: 1.25 !important;
   box-sizing: border-box !important;
 }
 
-.rbc-show-more {
-  color: var(--prof-mint) !important;
+/* last event row: shorten to leave space for badge (no overlap) */
+.rbc-row-content:has(.rbc-show-more) .rbc-row:nth-last-of-type(2) .rbc-row-segment {
+  padding-right: 28px !important;
+  box-sizing: border-box !important;
+}
+
+/* show-more row: no vertical space so max events fit */
+.rbc-month-row .rbc-row-content .rbc-row:has(.rbc-show-more) {
+  height: 0 !important;
+  min-height: 0 !important;
+  overflow: visible !important;
+}
+
+.rbc-month-view .rbc-show-more {
+  color: rgba(255,255,255,0.9) !important;
   font-weight: 700 !important;
-  font-size: 13px !important;
-  padding: 2px 4px 4px 4px !important;
-  border-radius: 6px !important;
-  background: var(--prof-pine) !important;
-  text-align: center !important;
+  font-size: 10px !important;
+  padding: 1px 5px !important;
+  border-radius: 4px !important;
+  background: rgba(40,35,38,0.55) !important;
   white-space: nowrap !important;
+  display: block !important;
+  line-height: 1.4 !important;
+  position: relative !important;
+  z-index: 5 !important;
+  float: right !important;
+  margin-top: -18px !important;
+  margin-right: 2px !important;
+  pointer-events: auto !important;
 }
 
 .rbc-date-cell {
@@ -193,16 +228,18 @@ body {
   }
   .calendar-mobile .rbc-event {
     font-size: 11px !important;
-    padding: 3px 6px !important;
+    padding: 2px 6px !important;
   }
   .calendar-mobile .rbc-event.rbc-event--timed {
-    padding: 4px 6px !important;
+    padding: 2px 6px !important;
   }
   .calendar-mobile .rbc-event.rbc-event--timed .rbc-event-timed {
     font-size: 11px !important;
   }
   .calendar-mobile .rbc-show-more {
-    font-size: 11px !important;
+    font-size: 9px !important;
+    padding: 1px 4px !important;
+    margin-top: -16px !important;
   }
   .calendar-mobile .rbc-month-view,
   .calendar-mobile .rbc-time-view {

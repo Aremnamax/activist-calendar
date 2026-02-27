@@ -2,8 +2,15 @@
 
 import { useState, useEffect } from 'react'
 import { api } from '@/lib/api'
+import { useAuthStore } from '@/store/authStore'
 import Layout from '@/components/Layout'
 import EventModal from '@/components/EventModal'
+
+interface Department {
+  id: number
+  name: string
+  color: string
+}
 
 interface SubscriptionItem {
   id: number
@@ -50,10 +57,30 @@ function toCalEvent(s: SubscriptionItem) {
 }
 
 export default function MyEventsPage() {
+  const { isAuthenticated } = useAuthStore()
   const [list, setList] = useState<SubscriptionItem[]>([])
   const [loading, setLoading] = useState(true)
   const [selectedEvent, setSelectedEvent] = useState<any>(null)
   const [subscriptionIds, setSubscriptionIds] = useState<Set<number>>(new Set())
+  const [departments, setDepartments] = useState<Department[]>([])
+  const [subscribedDepts, setSubscribedDepts] = useState<number[]>([])
+
+  useEffect(() => {
+    api.get('/departments').then(r => setDepartments(r.data || [])).catch(() => {})
+  }, [])
+  useEffect(() => {
+    if (!isAuthenticated) return
+    api.get('/users/me').then(r => setSubscribedDepts(r.data?.subscribedDepartments || [])).catch(() => {})
+  }, [isAuthenticated])
+
+  const toggleDeptSubscription = async (deptId: number) => {
+    if (!isAuthenticated) return
+    const next = subscribedDepts.includes(deptId)
+      ? subscribedDepts.filter(d => d !== deptId)
+      : [...subscribedDepts, deptId]
+    setSubscribedDepts(next)
+    try { await api.patch('/users/me/departments', { departmentIds: next }) } catch {}
+  }
 
   const loadList = () => {
     api.get('/subscriptions/my')
@@ -90,6 +117,37 @@ export default function MyEventsPage() {
         <p className="text-sm text-prof-black/40 mt-0.5">Мероприятия, на которые вы подписаны</p>
       </div>
 
+      {/* Подписки на подразделения */}
+      {isAuthenticated && departments.length > 0 && (
+        <div className="mb-6 rounded-2xl px-5 py-4 bg-white/80 border border-prof-pine/8 shadow-card backdrop-blur-sm">
+          <h3 className="text-sm font-bold text-prof-black/60 uppercase tracking-wider mb-3">Подписки на подразделения</h3>
+          <p className="text-xs text-prof-black/50 mb-3">Получайте уведомления о новых мероприятиях выбранных подразделений</p>
+          <div className="flex flex-wrap gap-2">
+            {departments.map(d => {
+              const isActive = subscribedDepts.includes(d.id)
+              return (
+                <button
+                  key={d.id}
+                  onClick={() => toggleDeptSubscription(d.id)}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold border transition-all"
+                  style={{
+                    backgroundColor: isActive ? d.color : 'transparent',
+                    color: isActive ? '#fff' : d.color,
+                    borderColor: isActive ? d.color : d.color + '40',
+                  }}
+                >
+                  <span className="w-[6px] h-[6px] rounded-full" style={{ backgroundColor: isActive ? '#fff' : d.color, opacity: isActive ? 0.6 : 1 }} />
+                  {d.name}
+                  {isActive && (
+                    <svg className="w-3 h-3 ml-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>
+                  )}
+                </button>
+              )
+            })}
+          </div>
+        </div>
+      )}
+
       {loading ? (
         <div className="flex justify-center py-20">
           <svg className="w-7 h-7 animate-spin text-prof-pacific" fill="none" viewBox="0 0 24 24">
@@ -122,7 +180,7 @@ export default function MyEventsPage() {
                     <div className="flex items-center gap-2.5 mb-1.5 flex-wrap">
                       {depts.length > 0 ? (
                         depts.map((d) => (
-                          <span key={d.id} className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold text-white" style={{ backgroundColor: d.color }}>
+                          <span key={d.name} className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold text-white" style={{ backgroundColor: d.color }}>
                             <span className="w-[6px] h-[6px] rounded-full bg-white/50" />{d.name}
                           </span>
                         ))

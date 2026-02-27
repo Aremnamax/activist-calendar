@@ -1,10 +1,13 @@
 'use client'
 
 import Link from 'next/link'
+import { createPortal } from 'react-dom'
 import { usePathname } from 'next/navigation'
 import { useAuthStore } from '@/store/authStore'
 import { useState, useEffect, useRef } from 'react'
 import { api } from '@/lib/api'
+
+const NOTIF_DROPDOWN_W = 320
 
 /* ───── Icons ───── */
 const CalendarIcon = () => (
@@ -62,6 +65,12 @@ interface NavItem {
   badge?: number
 }
 
+function roleLabel(role?: string): string {
+  if (role === 'admin') return 'Администратор'
+  if (role === 'organizer') return 'Организатор'
+  return 'Активист'
+}
+
 export default function Layout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
   const { user, isAuthenticated, logout } = useAuthStore()
@@ -70,7 +79,9 @@ export default function Layout({ children }: { children: React.ReactNode }) {
   const [unreadCount, setUnreadCount] = useState(0)
   const [notifications, setNotifications] = useState<any[]>([])
   const [bellOpen, setBellOpen] = useState(false)
-  const bellRef = useRef<HTMLDivElement>(null)
+  const [bellDropdownRect, setBellDropdownRect] = useState<DOMRect | null>(null)
+  const bellRefSidebar = useRef<HTMLButtonElement>(null)
+  const bellRefMobile = useRef<HTMLButtonElement>(null)
 
   const isAdmin = user?.role === 'admin'
   const isOrganizer = user?.role === 'organizer' || isAdmin
@@ -85,11 +96,29 @@ export default function Layout({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     const handler = (e: MouseEvent) => {
-      if (bellRef.current && !bellRef.current.contains(e.target as Node)) setBellOpen(false)
+      const target = e.target as Node
+      const inBell = bellRefSidebar.current?.contains(target) || bellRefMobile.current?.contains(target)
+      const inDropdown = (target as Element).closest?.('[data-bell-dropdown]')
+      if (bellOpen && !inBell && !inDropdown) setBellOpen(false)
     }
     document.addEventListener('mousedown', handler)
     return () => document.removeEventListener('mousedown', handler)
-  }, [])
+  }, [bellOpen])
+
+  useEffect(() => {
+    if (bellOpen) {
+      const update = () => {
+        const el = typeof window !== 'undefined' && window.innerWidth >= 768 ? bellRefSidebar.current : bellRefMobile.current
+        if (el) setBellDropdownRect(el.getBoundingClientRect())
+        else setBellDropdownRect(null)
+      }
+      requestAnimationFrame(update)
+      window.addEventListener('scroll', update, true)
+      window.addEventListener('resize', update)
+      return () => { window.removeEventListener('scroll', update, true); window.removeEventListener('resize', update) }
+    }
+    setBellDropdownRect(null)
+  }, [bellOpen])
 
   const openBell = async () => {
     const willOpen = !bellOpen
@@ -115,15 +144,18 @@ export default function Layout({ children }: { children: React.ReactNode }) {
   }
 
   const [userMenuOpen, setUserMenuOpen] = useState(false)
-  const userMenuRef = useRef<HTMLDivElement>(null)
-
+  const userMenuRefSidebar = useRef<HTMLButtonElement>(null)
+  const userMenuRefMobile = useRef<HTMLButtonElement>(null)
   useEffect(() => {
     const handler = (e: MouseEvent) => {
-      if (userMenuRef.current && !userMenuRef.current.contains(e.target as Node)) setUserMenuOpen(false)
+      const target = e.target as Node
+      const inButton = userMenuRefSidebar.current?.contains(target) || userMenuRefMobile.current?.contains(target)
+      const inDropdown = (target as Element).closest?.('[data-user-dropdown]')
+      if (userMenuOpen && !inButton && !inDropdown) setUserMenuOpen(false)
     }
     document.addEventListener('mousedown', handler)
     return () => document.removeEventListener('mousedown', handler)
-  }, [])
+  }, [userMenuOpen])
 
   const navItems: NavItem[] = [
     { href: '/calendar', label: 'Календарь', icon: <CalendarIcon />, show: true },
@@ -132,53 +164,204 @@ export default function Layout({ children }: { children: React.ReactNode }) {
     { href: '/my-events', label: 'Мои события', icon: <EventsIcon />, show: isAuthenticated },
   ]
 
-  const active = (href: string) => pathname === href
-
-  const roleLabel = (role?: string) => {
-    if (role === 'admin') return 'Администратор'
-    if (role === 'organizer') return 'Организатор'
-    return 'Активист'
-  }
-
   return (
     <div className="min-h-screen bg-[#f4fbf8]">
-      {/* Header */}
-      <header className="sticky top-0 z-40 glass-header border-b border-white/30">
-        <div className="mx-auto max-w-[1400px] px-4 sm:px-6 lg:px-8">
-          <div className="flex h-16 items-center justify-between">
-            <Link href="/calendar" className="flex items-center group">
-              <img src="/logo.svg" alt="ПРОФ" className="h-9 group-hover:opacity-80 transition-opacity" />
+      {/* Desktop: notifications — всегда справа сверху */}
+      {isAuthenticated && (
+        <div className="hidden md:block fixed top-4 right-4 z-50">
+          <div className="relative">
+            <button
+              ref={bellRefSidebar}
+              onClick={openBell}
+              title="Уведомления"
+              className="flex items-center justify-center w-10 h-10 rounded-xl text-prof-black/50 hover:bg-white/80 hover:text-prof-pine transition-colors shadow-sm border border-white/50"
+              style={{ background: 'rgba(255,255,255,0.7)', backdropFilter: 'blur(12px)' }}
+            >
+              <BellIcon />
+              {unreadCount > 0 && (
+                <span className="absolute top-0.5 right-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-red-500 text-white text-[9px] font-bold px-0.5">
+                  {unreadCount}
+                </span>
+              )}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Bell dropdown — портал (desktop + mobile) */}
+      {isAuthenticated && bellOpen && bellDropdownRect && createPortal(
+        <>
+          <div className="fixed inset-0 z-[9998]" onClick={() => setBellOpen(false)} />
+          <div
+            data-bell-dropdown
+            className="fixed w-80 rounded-2xl shadow-modal border border-white/30 overflow-hidden z-[9999]"
+            style={{
+              background: 'rgba(255,255,255,0.95)',
+              backdropFilter: 'blur(20px) saturate(1.4)',
+              left: Math.max(8, Math.min(bellDropdownRect.right - NOTIF_DROPDOWN_W, typeof window !== 'undefined' ? window.innerWidth - NOTIF_DROPDOWN_W - 8 : 0)),
+              top: bellDropdownRect.bottom + 8,
+            }}
+          >
+            <div className="flex items-center justify-between px-4 py-3 border-b border-prof-pine/8">
+              <p className="text-sm font-bold text-prof-black">Уведомления</p>
+              {unreadCount > 0 && (
+                <button onClick={markAllRead} className="text-xs font-semibold text-prof-pacific hover:text-prof-pine">
+                  Прочитать все
+                </button>
+              )}
+            </div>
+            <div className="max-h-80 overflow-y-auto">
+              {notifications.length === 0 ? (
+                <p className="px-4 py-6 text-sm text-prof-black/40 text-center">Нет уведомлений</p>
+              ) : (
+                notifications.slice(0, 20).map(n => {
+                  const isOrgRequest = n.metadata?.action === 'organizer_request'
+                  return (
+                    <div key={n.id} className={`px-4 py-3 border-b border-prof-pine/5 last:border-0 text-sm ${n.isRead ? 'text-prof-black/40' : 'text-prof-black bg-prof-mint/20'}`}>
+                      <p className="leading-snug">{n.message}</p>
+                      {isOrgRequest && isAdmin && !n.metadata?.resolved && (
+                        <div className="flex gap-2 mt-2">
+                          <button
+                            onClick={async (e) => {
+                              e.stopPropagation()
+                              try {
+                                await api.post(`/users/${n.metadata.userId}/approve-organizer`)
+                                await api.patch(`/notifications/${n.id}/read`)
+                                setUnreadCount(c => Math.max(0, c - 1))
+                                setNotifications(prev => prev.map(x => x.id === n.id ? { ...x, isRead: true, metadata: { ...x.metadata, resolved: 'approved' } } : x))
+                              } catch {}
+                            }}
+                            className="px-3 py-1 rounded-lg text-xs font-bold text-white bg-emerald-500 hover:bg-emerald-600 transition-colors"
+                          >
+                            Одобрить
+                          </button>
+                          <button
+                            onClick={async (e) => {
+                              e.stopPropagation()
+                              try {
+                                await api.post(`/users/${n.metadata.userId}/reject-organizer`)
+                                await api.patch(`/notifications/${n.id}/read`)
+                                setUnreadCount(c => Math.max(0, c - 1))
+                                setNotifications(prev => prev.map(x => x.id === n.id ? { ...x, isRead: true, metadata: { ...x.metadata, resolved: 'rejected' } } : x))
+                              } catch {}
+                            }}
+                            className="px-3 py-1 rounded-lg text-xs font-bold text-white bg-red-500 hover:bg-red-600 transition-colors"
+                          >
+                            Отклонить
+                          </button>
+                        </div>
+                      )}
+                      {isOrgRequest && n.metadata?.resolved && (
+                        <p className={`text-xs font-semibold mt-1.5 ${n.metadata.resolved === 'approved' ? 'text-emerald-600' : 'text-red-500'}`}>
+                          {n.metadata.resolved === 'approved' ? 'Одобрено' : 'Отклонено'}
+                        </p>
+                      )}
+                      <p className="text-[11px] mt-1 text-prof-black/30">
+                        {new Date(n.createdAt).toLocaleDateString('ru-RU', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                      </p>
+                    </div>
+                  )
+                })
+              )}
+            </div>
+          </div>
+        </>,
+        document.body
+      )}
+
+      {/* Desktop: left sidebar (icons only) */}
+      <aside className="hidden md:flex fixed left-0 top-0 bottom-0 z-40 w-16 flex-col items-center py-5 px-2 glass-header border-r border-white/30">
+        <Link href="/calendar" className="mb-4 flex items-center justify-center group shrink-0">
+          <img src="/logo.svg" alt="ПРОФ" className="h-8 group-hover:opacity-80 transition-opacity" />
+        </Link>
+
+        <div className="flex flex-col gap-1 mb-4">
+          {isAuthenticated ? (
+            <div className="relative">
+              <button
+                ref={userMenuRefSidebar}
+                onClick={() => setUserMenuOpen(!userMenuOpen)}
+                title={user?.nickname}
+                className="flex items-center justify-center w-12 h-12 rounded-xl hover:bg-white/50 transition-colors"
+              >
+                <div className="h-9 w-9 rounded-xl gradient-prof flex items-center justify-center text-white font-bold text-sm shadow-sm">
+                  {user?.nickname?.charAt(0).toUpperCase() || 'U'}
+                </div>
+              </button>
+            </div>
+          ) : (
+            <Link
+              href="/login"
+              title="Войти"
+              className="flex items-center justify-center w-12 h-12 rounded-xl text-prof-black/70 hover:bg-white/60 hover:text-prof-pine transition-colors"
+            >
+              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M11 16l-4-4m0 0l4-4m-4 4h14m-5 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h7a3 3 0 013 3v1" />
+              </svg>
             </Link>
+          )}
+        </div>
+        {userMenuOpen && createPortal(
+          <>
+            <div className="fixed inset-0 z-[9998]" onClick={() => setUserMenuOpen(false)} />
+            <div data-user-dropdown className="fixed w-52 rounded-2xl shadow-modal border border-white/30 overflow-hidden z-[9999] py-1 right-4 top-14 md:right-auto md:left-16 md:top-4" style={{ background: 'rgba(255,255,255,0.95)', backdropFilter: 'blur(20px) saturate(1.4)' }}>
+              <Link
+                href="/settings"
+                onClick={() => setUserMenuOpen(false)}
+                className="flex items-center gap-2.5 px-4 py-2.5 text-sm font-medium text-prof-black/70 hover:bg-prof-mint/40 hover:text-prof-pine transition-colors"
+              >
+                <SettingsIcon />
+                Настройки
+              </Link>
+              <div className="border-t border-prof-pine/8 my-1" />
+              <button
+                onClick={() => { setUserMenuOpen(false); logout() }}
+                className="flex items-center gap-2.5 w-full px-4 py-2.5 text-sm font-medium text-red-500/70 hover:bg-red-50/60 hover:text-red-600 transition-colors"
+              >
+                <LogoutIcon />
+                Выйти
+              </button>
+            </div>
+          </>,
+          document.body
+        )}
 
-            {/* Desktop nav */}
-            <nav className="hidden md:flex items-center gap-1">
-              {navItems.filter(n => n.show).map((item) => (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  className={`relative flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold transition-all duration-200 ${
-                    active(item.href)
-                      ? 'bg-prof-pine text-white shadow-md'
-                      : 'text-prof-black/70 hover:bg-white/60 hover:text-prof-pine'
-                  }`}
-                >
-                  {item.icon}
-                  {item.label}
-                  {!!item.badge && item.badge > 0 && (
-                    <span className="absolute -top-1 -right-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-red-500 text-white text-[10px] font-bold px-1 shadow">
-                      {item.badge}
-                    </span>
-                  )}
-                </Link>
-              ))}
-            </nav>
+        <nav className="flex flex-col gap-1 flex-1">
+          {navItems.filter(n => n.show).map((item) => (
+            <Link
+              key={item.href}
+              href={item.href}
+              title={item.label}
+              className={`relative flex items-center justify-center w-12 h-12 rounded-xl text-sm font-semibold transition-all duration-200 ${
+                pathname === item.href
+                  ? 'bg-prof-pine text-white shadow-md'
+                  : 'text-prof-black/70 hover:bg-white/60 hover:text-prof-pine'
+              }`}
+            >
+              {item.icon}
+              {!!item.badge && item.badge > 0 && (
+                <span className="absolute -top-0.5 -right-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-red-500 text-white text-[9px] font-bold px-0.5">
+                  {item.badge}
+                </span>
+              )}
+            </Link>
+          ))}
+        </nav>
+      </aside>
 
-            <div className="flex items-center gap-2">
+      {/* Mobile: compact header */}
+      <header className="sticky top-0 z-40 glass-header border-b border-white/30 md:hidden">
+        <div className="px-4 flex h-14 items-center justify-between">
+          <Link href="/calendar" className="flex items-center group">
+            <img src="/logo.svg" alt="ПРОФ" className="h-8 group-hover:opacity-80 transition-opacity" />
+          </Link>
+          <div className="flex items-center gap-2">
               {isAuthenticated ? (
                 <>
                   {/* Notification bell */}
-                  <div className="relative" ref={bellRef}>
+                  <div className="relative">
                     <button
+                      ref={bellRefMobile}
                       onClick={openBell}
                       className="relative p-2 rounded-xl text-prof-black/50 hover:bg-white/60 hover:text-prof-pine transition-colors"
                     >
@@ -189,108 +372,23 @@ export default function Layout({ children }: { children: React.ReactNode }) {
                         </span>
                       )}
                     </button>
-                    {bellOpen && (
-                      <div className="absolute right-0 top-full mt-2 w-80 rounded-2xl shadow-modal border border-white/30 overflow-hidden z-50" style={{ background: 'rgba(255,255,255,0.95)', backdropFilter: 'blur(20px) saturate(1.4)' }}>
-                        <div className="flex items-center justify-between px-4 py-3 border-b border-prof-pine/8">
-                          <p className="text-sm font-bold text-prof-black">Уведомления</p>
-                          {unreadCount > 0 && (
-                            <button onClick={markAllRead} className="text-xs font-semibold text-prof-pacific hover:text-prof-pine">
-                              Прочитать все
-                            </button>
-                          )}
-                        </div>
-                        <div className="max-h-80 overflow-y-auto">
-                          {notifications.length === 0 ? (
-                            <p className="px-4 py-6 text-sm text-prof-black/40 text-center">Нет уведомлений</p>
-                          ) : (
-                            notifications.slice(0, 20).map(n => {
-                              const isOrgRequest = n.metadata?.action === 'organizer_request'
-                              return (
-                                <div key={n.id} className={`px-4 py-3 border-b border-prof-pine/5 last:border-0 text-sm ${n.isRead ? 'text-prof-black/40' : 'text-prof-black bg-prof-mint/20'}`}>
-                                  <p className="leading-snug">{n.message}</p>
-                                  {isOrgRequest && isAdmin && !n.metadata?.resolved && (
-                                    <div className="flex gap-2 mt-2">
-                                      <button
-                                        onClick={async (e) => {
-                                          e.stopPropagation()
-                                          try {
-                                            await api.post(`/users/${n.metadata.userId}/approve-organizer`)
-                                            await api.patch(`/notifications/${n.id}/read`)
-                                            setUnreadCount(c => Math.max(0, c - 1))
-                                            setNotifications(prev => prev.map(x => x.id === n.id ? { ...x, isRead: true, metadata: { ...x.metadata, resolved: 'approved' } } : x))
-                                          } catch {}
-                                        }}
-                                        className="px-3 py-1 rounded-lg text-xs font-bold text-white bg-emerald-500 hover:bg-emerald-600 transition-colors"
-                                      >
-                                        Одобрить
-                                      </button>
-                                      <button
-                                        onClick={async (e) => {
-                                          e.stopPropagation()
-                                          try {
-                                            await api.post(`/users/${n.metadata.userId}/reject-organizer`)
-                                            await api.patch(`/notifications/${n.id}/read`)
-                                            setUnreadCount(c => Math.max(0, c - 1))
-                                            setNotifications(prev => prev.map(x => x.id === n.id ? { ...x, isRead: true, metadata: { ...x.metadata, resolved: 'rejected' } } : x))
-                                          } catch {}
-                                        }}
-                                        className="px-3 py-1 rounded-lg text-xs font-bold text-white bg-red-500 hover:bg-red-600 transition-colors"
-                                      >
-                                        Отклонить
-                                      </button>
-                                    </div>
-                                  )}
-                                  {isOrgRequest && n.metadata?.resolved && (
-                                    <p className={`text-xs font-semibold mt-1.5 ${n.metadata.resolved === 'approved' ? 'text-emerald-600' : 'text-red-500'}`}>
-                                      {n.metadata.resolved === 'approved' ? 'Одобрено' : 'Отклонено'}
-                                    </p>
-                                  )}
-                                  <p className="text-[11px] mt-1 text-prof-black/30">
-                                    {new Date(n.createdAt).toLocaleDateString('ru-RU', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}
-                                  </p>
-                                </div>
-                              )
-                            })
-                          )}
-                        </div>
-                      </div>
-                    )}
                   </div>
 
-                  {/* User avatar + dropdown */}
-                  <div className="relative hidden sm:block" ref={userMenuRef}>
+                  {/* User avatar — dropdown via portal in sidebar */}
+                  <div className="relative">
                     <button
+                      ref={userMenuRefMobile}
                       onClick={() => setUserMenuOpen(!userMenuOpen)}
-                      className="flex items-center gap-3 ml-1 p-1 rounded-xl hover:bg-white/50 transition-colors"
+                      className="flex items-center gap-2 p-1.5 rounded-xl hover:bg-white/50 transition-colors"
                     >
-                      <div className="text-right">
-                        <p className="text-sm font-semibold text-prof-black leading-tight">{user?.nickname}</p>
-                        <p className="text-xs text-prof-pacific font-medium">{roleLabel(user?.role)}</p>
-                      </div>
                       <div className="h-9 w-9 rounded-xl gradient-prof flex items-center justify-center text-white font-bold text-sm shadow-sm">
                         {user?.nickname?.charAt(0).toUpperCase() || 'U'}
                       </div>
-                    </button>
-                    {userMenuOpen && (
-                      <div className="absolute right-0 top-full mt-2 w-52 rounded-2xl shadow-modal border border-white/30 overflow-hidden z-50 py-1" style={{ background: 'rgba(255,255,255,0.95)', backdropFilter: 'blur(20px) saturate(1.4)' }}>
-                        <Link
-                          href="/settings"
-                          onClick={() => setUserMenuOpen(false)}
-                          className="flex items-center gap-2.5 px-4 py-2.5 text-sm font-medium text-prof-black/70 hover:bg-prof-mint/40 hover:text-prof-pine transition-colors"
-                        >
-                          <SettingsIcon />
-                          Настройки
-                        </Link>
-                        <div className="border-t border-prof-pine/8 my-1" />
-                        <button
-                          onClick={() => { setUserMenuOpen(false); logout() }}
-                          className="flex items-center gap-2.5 w-full px-4 py-2.5 text-sm font-medium text-red-500/70 hover:bg-red-50/60 hover:text-red-600 transition-colors"
-                        >
-                          <LogoutIcon />
-                          Выйти
-                        </button>
+                      <div className="text-left hidden sm:block">
+                        <p className="text-sm font-semibold text-prof-black leading-tight">{user?.nickname}</p>
+                        <p className="text-xs text-prof-pacific font-medium">{roleLabel(user?.role)}</p>
                       </div>
-                    )}
+                    </button>
                   </div>
                 </>
               ) : (
@@ -307,7 +405,6 @@ export default function Layout({ children }: { children: React.ReactNode }) {
               >
                 {mobileOpen ? <CloseIcon /> : <MenuIcon />}
               </button>
-            </div>
           </div>
         </div>
       </header>
@@ -342,7 +439,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
                   href={item.href}
                   onClick={() => setMobileOpen(false)}
                   className={`relative flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-semibold transition-all ${
-                    active(item.href) ? 'bg-prof-pine text-white shadow-md' : 'text-prof-black/70 hover:bg-white/60 hover:text-prof-pine'
+                    pathname === item.href ? 'bg-prof-pine text-white shadow-md' : 'text-prof-black/70 hover:bg-white/60 hover:text-prof-pine'
                   }`}
                 >
                   {item.icon}
@@ -359,7 +456,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
                   href="/settings"
                   onClick={() => setMobileOpen(false)}
                   className={`relative flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-semibold transition-all ${
-                    active('/settings') ? 'bg-prof-pine text-white shadow-md' : 'text-prof-black/70 hover:bg-white/60 hover:text-prof-pine'
+                    pathname === '/settings' ? 'bg-prof-pine text-white shadow-md' : 'text-prof-black/70 hover:bg-white/60 hover:text-prof-pine'
                   }`}
                 >
                   <SettingsIcon />
@@ -386,7 +483,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
         </div>
       )}
 
-      <main className="mx-auto max-w-[1400px] px-4 sm:px-6 lg:px-8 py-6 lg:py-8">
+      <main className={`md:pl-16 mx-auto max-w-[1400px] ${pathname === '/calendar' ? 'px-3 py-4' : 'px-4 sm:px-6 lg:px-8 py-6 lg:py-8'}`}>
         {children}
       </main>
     </div>

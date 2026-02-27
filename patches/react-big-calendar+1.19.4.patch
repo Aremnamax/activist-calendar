@@ -1,0 +1,55 @@
+diff --git a/node_modules/react-big-calendar/lib/DateContentRow.js b/node_modules/react-big-calendar/lib/DateContentRow.js
+index 8b72371..03ed444 100644
+--- a/node_modules/react-big-calendar/lib/DateContentRow.js
++++ b/node_modules/react-big-calendar/lib/DateContentRow.js
+@@ -100,7 +100,8 @@ var DateContentRow = /*#__PURE__*/function (_React$Component) {
+       var eventHeight = (0, _height.default)(this.eventRowRef.current);
+       var headingHeight = (_this$headingRowRef = this.headingRowRef) !== null && _this$headingRowRef !== void 0 && _this$headingRowRef.current ? (0, _height.default)(this.headingRowRef.current) : 0;
+       var eventSpace = (0, _height.default)(this.containerRef.current) - headingHeight;
+-      return Math.max(Math.floor(eventSpace / eventHeight), 1);
++      var base = Math.max(Math.floor(eventSpace / eventHeight), 1);
++      return base + 1;
+     }
+   }, {
+     key: "render",
+diff --git a/node_modules/react-big-calendar/lib/Month.js b/node_modules/react-big-calendar/lib/Month.js
+index 2763e66..2fcec64 100644
+--- a/node_modules/react-big-calendar/lib/Month.js
++++ b/node_modules/react-big-calendar/lib/Month.js
+@@ -170,8 +170,7 @@ var MonthView = /*#__PURE__*/function (_React$Component) {
+             target: target
+           }
+         });
+-      } else if (doShowMoreDrillDown) {
+-        (0, _helpers.notify)(onDrillDown, [date, getDrilldownView(date) || _constants.views.DAY]);
++      } else if (false) {
+       }
+       (0, _helpers.notify)(onShowMore, [events, date, slot]);
+     };
+diff --git a/node_modules/react-big-calendar/lib/utils/DateSlotMetrics.js b/node_modules/react-big-calendar/lib/utils/DateSlotMetrics.js
+index edc5473..0019fb2 100644
+--- a/node_modules/react-big-calendar/lib/utils/DateSlotMetrics.js
++++ b/node_modules/react-big-calendar/lib/utils/DateSlotMetrics.js
+@@ -12,7 +12,7 @@ var isSegmentInSlot = function isSegmentInSlot(seg, slot) {
+   return seg.left <= slot && seg.right >= slot;
+ };
+ var isEqual = function isEqual(a, b) {
+-  return a[0].range === b[0].range && a[0].events === b[0].events;
++  return a[0].range === b[0].range && a[0].events === b[0].events && a[0].maxRows === b[0].maxRows;
+ };
+ function getSlotMetrics() {
+   return (0, _memoizeOne.default)(function (options) {
+@@ -31,11 +31,10 @@ function getSlotMetrics() {
+     var segments = events.map(function (evt) {
+       return (0, _eventLevels2.eventSegments)(evt, range, accessors, localizer);
+     });
+-    var _eventLevels = (0, _eventLevels2.eventLevels)(segments, Math.max(maxRows - 1, 1)),
++    // Use maxRows (not maxRows-1): show-more row has height:0 via CSS, so no need to reserve a row
++    var _eventLevels = (0, _eventLevels2.eventLevels)(segments, Math.max(maxRows, 1)),
+       levels = _eventLevels.levels,
+       extra = _eventLevels.extra;
+-    // Subtract 1 from minRows to not include showMore button row when
+-    // it would be rendered
+     var minEventRows = extra.length > 0 ? minRows - 1 : minRows;
+     while (levels.length < minEventRows) levels.push([]);
+     return {
