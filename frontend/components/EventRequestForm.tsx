@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { api, extractErrorMessage } from '@/lib/api'
 import { EVENT_LABELS } from '@/lib/constants'
+import DatePicker from '@/components/DatePicker'
 
 const TIME_SLOTS = Array.from({ length: 48 }, (_, i) => {
   const h = Math.floor(i / 2)
@@ -51,7 +52,7 @@ function TimeCarousel({ value, onChange, label }: { value: string; onChange: (v:
   return (
     <div>
       <label className="block text-xs font-semibold text-prof-black/60 mb-2">{label}</label>
-      <div className="flex gap-3 items-start">
+      <div className="flex gap-3 items-center">
         <div
           ref={scrollRef}
           className="flex flex-col gap-0.5 overflow-y-auto min-w-[72px] rounded-xl border border-prof-pine/10 bg-white/60 px-3 py-2"
@@ -359,25 +360,21 @@ export default function EventRequestForm({
             <div className="glass-panel rounded-2xl p-4 border border-white/40">
               <p className="text-xs font-bold text-prof-black/50 uppercase tracking-wider mb-3">Дата и время</p>
               <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-semibold text-prof-black/60 mb-1">Дата начала <span className="text-red-500">*</span></label>
-                  <input
-                    type="date"
-                    value={data.dateStart}
-                    onChange={e => update('dateStart', e.target.value)}
-                    className="w-full px-4 py-2.5 rounded-xl border border-prof-pine/10 text-sm text-prof-black focus:outline-none focus:ring-2 focus:ring-prof-pacific/30 bg-white/60 backdrop-blur-sm"
-                    required
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-prof-black/60 mb-1">Дата окончания</label>
-                  <input
-                    type="date"
-                    value={data.dateEnd}
-                    onChange={e => update('dateEnd', e.target.value)}
-                    className="w-full px-4 py-2.5 rounded-xl border border-prof-pine/10 text-sm text-prof-black focus:outline-none focus:ring-2 focus:ring-prof-pacific/30 bg-white/60 backdrop-blur-sm"
-                  />
-                </div>
+                <DatePicker
+                  label="Дата начала"
+                  value={data.dateStart}
+                  onChange={v => update('dateStart', v)}
+                  required
+                  placeholder="Выберите дату"
+                />
+                <DatePicker
+                  label="Дата окончания"
+                  value={data.dateEnd}
+                  onChange={v => update('dateEnd', v)}
+                  minDate={data.dateStart || undefined}
+                  placeholder={data.dateStart ? 'Та же дата' : 'Сначала выберите начало'}
+                  alignRight
+                />
                 <div className="col-span-2">
                   <TimeCarousel label="Время начала" value={data.timeStart} onChange={v => update('timeStart', v)} />
                 </div>

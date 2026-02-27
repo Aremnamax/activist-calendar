@@ -1,6 +1,7 @@
 'use client'
 
-import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
+import { createPortal } from 'react-dom'
 import { Calendar, momentLocalizer, View, SlotInfo, ToolbarProps, Navigate } from 'react-big-calendar'
 import moment from 'moment'
 import 'moment/locale/ru'
@@ -36,26 +37,34 @@ function formatEventTime(start: Date, end: Date): string {
   return `${start.getHours().toString().padStart(2, '0')}:${start.getMinutes().toString().padStart(2, '0')}–${end.getHours().toString().padStart(2, '0')}:${end.getMinutes().toString().padStart(2, '0')}`
 }
 
+function formatEventStartTime(start: Date): string {
+  return `${start.getHours().toString().padStart(2, '0')}:${start.getMinutes().toString().padStart(2, '0')}`
+}
+
 function CustomEventComponent({ event, title, view }: { event: CalEvent; title?: string; view?: View }) {
-  const color = event.department?.color || '#18A7B5'
   const timed = isTimedEvent(event.start, event.end)
   const isTimeGrid = view === 'day' || view === 'week'
-  if (isTimeGrid || !timed) {
+  const isMonthView = view === 'month'
+  if (isTimeGrid) {
     return (
       <span className="rbc-event-label">
         {title || event.title}
-        {isTimeGrid && timed && (
+        {timed && (
           <span className="block text-[11px] font-normal opacity-90 mt-0.5">{formatEventTime(event.start, event.end)}</span>
         )}
       </span>
     )
   }
+  if (isMonthView) {
+    return (
+      <span className="rbc-event-timed flex items-center justify-between gap-2 w-full">
+        <span className="truncate text-[12px] font-semibold">{title || event.title}</span>
+        <span className="text-[11px] font-medium shrink-0 opacity-95">{formatEventStartTime(event.start)}</span>
+      </span>
+    )
+  }
   return (
-    <span className="rbc-event-timed flex items-center gap-2">
-      <span className="w-[8px] h-[8px] rounded-full shrink-0" style={{ backgroundColor: color }} />
-      <span className="truncate text-[13px]">{title || event.title}</span>
-      <span className="text-[11px] opacity-75 shrink-0">{formatEventTime(event.start, event.end)}</span>
-    </span>
+    <span className="rbc-event-label">{title || event.title}</span>
   )
 }
 
@@ -74,6 +83,34 @@ interface CustomToolbarProps extends ToolbarProps<CalEvent, object> {
 }
 
 function CustomToolbar({ label, onNavigate, onView, view, departments = [], filterDepts = [], setFilterDepts, filterDropdownOpen, setFilterDropdownOpen }: CustomToolbarProps) {
+  const [viewDropdownOpen, setViewDropdownOpen] = useState(false)
+  const viewButtonRef = useRef<HTMLButtonElement>(null)
+  const filterButtonRef = useRef<HTMLButtonElement>(null)
+  const [viewDropdownRect, setViewDropdownRect] = useState<DOMRect | null>(null)
+  const [filterDropdownRect, setFilterDropdownRect] = useState<DOMRect | null>(null)
+
+  useEffect(() => {
+    if (viewDropdownOpen && viewButtonRef.current) {
+      const update = () => setViewDropdownRect(viewButtonRef.current!.getBoundingClientRect())
+      update()
+      window.addEventListener('scroll', update, true)
+      window.addEventListener('resize', update)
+      return () => { window.removeEventListener('scroll', update, true); window.removeEventListener('resize', update) }
+    }
+    setViewDropdownRect(null)
+  }, [viewDropdownOpen])
+
+  useEffect(() => {
+    if (filterDropdownOpen && filterButtonRef.current) {
+      const update = () => setFilterDropdownRect(filterButtonRef.current!.getBoundingClientRect())
+      update()
+      window.addEventListener('scroll', update, true)
+      window.addEventListener('resize', update)
+      return () => { window.removeEventListener('scroll', update, true); window.removeEventListener('resize', update) }
+    }
+    setFilterDropdownRect(null)
+  }, [filterDropdownOpen])
+
   const views: { key: View; name: string }[] = [
     { key: 'month', name: 'Месяц' },
     { key: 'week', name: 'Неделя' },
@@ -132,6 +169,7 @@ function CustomToolbar({ label, onNavigate, onView, view, departments = [], filt
           {departments.length > 0 && setFilterDepts && setFilterDropdownOpen && (
             <div className="relative">
               <button
+                ref={filterButtonRef}
                 onClick={() => setFilterDropdownOpen(!filterDropdownOpen)}
                 className="flex items-center gap-2 px-3 py-1.5 rounded-xl border border-prof-pine/15 bg-white/80 text-sm font-semibold text-prof-black hover:bg-prof-mint/30 transition-all"
               >
@@ -142,10 +180,13 @@ function CustomToolbar({ label, onNavigate, onView, view, departments = [], filt
                     : `Выбрано: ${filterDepts.length}`}
                 <svg className={`w-3.5 h-3.5 transition-transform ${filterDropdownOpen ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
               </button>
-              {filterDropdownOpen && (
+              {filterDropdownOpen && filterDropdownRect && createPortal(
                 <>
-                  <div className="fixed inset-0 z-40" onClick={() => setFilterDropdownOpen(false)} />
-                  <div className="absolute right-0 top-full mt-2 w-56 max-h-64 overflow-y-auto rounded-xl border border-prof-pine/12 bg-white shadow-modal z-50 py-2">
+                  <div className="fixed inset-0 z-[9998]" onClick={() => setFilterDropdownOpen(false)} />
+                  <div
+                    className="fixed w-56 max-h-64 overflow-y-auto rounded-xl border border-prof-pine/12 bg-white shadow-modal z-[9999] py-2"
+                    style={{ left: filterDropdownRect.right - 224, top: filterDropdownRect.bottom + 8 }}
+                  >
                     {departments.map(d => {
                       const isChecked = filterDepts.includes(d.id)
                       return (
@@ -179,69 +220,89 @@ function CustomToolbar({ label, onNavigate, onView, view, departments = [], filt
                       </button>
                     )}
                   </div>
-                </>
+                </>,
+                document.body
               )}
             </div>
           )}
-          <button
-            onClick={() => onNavigate(Navigate.TODAY)}
-            className="px-4 py-1.5 rounded-xl text-sm font-semibold text-prof-black/50 border border-prof-pine/10 hover:bg-prof-mint hover:text-prof-pine transition-all"
-          >
-            Сегодня
-          </button>
         </div>
       </div>
 
-      {/* Mobile: stacked layout */}
-      <div className="flex flex-col items-center gap-3 sm:hidden">
-        <div className="flex items-center gap-3">
-          <button
-            onClick={() => onNavigate(Navigate.PREVIOUS)}
-            className="flex h-9 w-9 items-center justify-center rounded-xl border border-prof-pine/10 text-prof-black/50 hover:bg-prof-mint hover:text-prof-pine transition-all"
-          >
-            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
-            </svg>
-          </button>
-          <span className="text-lg font-bold text-prof-black min-w-[160px] text-center">
-            {capitalize(label)}
-          </span>
-          <button
-            onClick={() => onNavigate(Navigate.NEXT)}
-            className="flex h-9 w-9 items-center justify-center rounded-xl border border-prof-pine/10 text-prof-black/50 hover:bg-prof-mint hover:text-prof-pine transition-all"
-          >
-            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
-            </svg>
-          </button>
-        </div>
-        <div className="flex gap-1.5 flex-wrap justify-center items-center">
-          {views.map(v => (
+      {/* Mobile: toolbar с выпадающим списком вида */}
+      <div className="flex flex-col gap-3 sm:hidden">
+        <div className="glass-panel rounded-2xl p-3 border border-prof-pine/10">
+          <div className="flex items-center justify-between gap-2 mb-3">
             <button
-              key={v.key}
-              onClick={() => onView(v.key)}
-              className={`px-3.5 py-1.5 rounded-xl text-sm font-semibold transition-all ${
-                view === v.key
-                  ? 'bg-prof-pine text-white shadow-sm'
-                  : 'text-prof-black/50 hover:bg-white/60 border border-prof-pine/10'
-              }`}
+              onClick={() => onNavigate(Navigate.PREVIOUS)}
+              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-prof-pine/10 text-prof-black/50 hover:bg-prof-mint hover:text-prof-pine transition-all"
             >
-              {v.name}
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
+              </svg>
             </button>
-          ))}
-          {departments.length > 0 && setFilterDepts && setFilterDropdownOpen && (
+            <span className="text-base font-bold text-prof-black text-center truncate flex-1">
+              {capitalize(label)}
+            </span>
+            <button
+              onClick={() => onNavigate(Navigate.NEXT)}
+              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-prof-pine/10 text-prof-black/50 hover:bg-prof-mint hover:text-prof-pine transition-all"
+            >
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+              </svg>
+            </button>
+          </div>
+          <div className="flex gap-2 flex-wrap items-center justify-center">
+            {/* Выпадающий список: Месяц / Неделя / День / Список */}
             <div className="relative">
               <button
+                ref={viewButtonRef}
+                onClick={() => setViewDropdownOpen(!viewDropdownOpen)}
+                className="flex items-center gap-2 px-4 py-2 rounded-xl border border-prof-pine/15 bg-white/80 text-sm font-semibold text-prof-black hover:bg-prof-mint/30 transition-all w-full min-w-[120px] justify-between"
+              >
+                {views.find(v => v.key === view)?.name || 'Вид'}
+                <svg className={`w-4 h-4 shrink-0 transition-transform ${viewDropdownOpen ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
+              </button>
+              {viewDropdownOpen && viewDropdownRect && createPortal(
+                <>
+                  <div className="fixed inset-0 z-[9998]" onClick={() => setViewDropdownOpen(false)} />
+                  <div
+                    className="fixed min-w-[120px] rounded-xl border border-prof-pine/12 bg-white shadow-modal z-[9999] py-2"
+                    style={{ left: viewDropdownRect.left, top: viewDropdownRect.bottom + 8, width: viewDropdownRect.width }}
+                  >
+                    {views.map(v => (
+                      <button
+                        key={v.key}
+                        onClick={() => { onView(v.key); setViewDropdownOpen(false) }}
+                        className={`w-full px-4 py-2.5 text-left text-sm font-semibold transition-colors ${
+                          view === v.key ? 'bg-prof-mint/60 text-prof-pine' : 'hover:bg-prof-mint/30 text-prof-black'
+                        }`}
+                      >
+                        {v.name}
+                      </button>
+                    ))}
+                  </div>
+                </>,
+                document.body
+              )}
+            </div>
+            {departments.length > 0 && setFilterDepts && setFilterDropdownOpen && (
+            <div className="relative">
+              <button
+                ref={filterButtonRef}
                 onClick={() => setFilterDropdownOpen(!filterDropdownOpen)}
                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-prof-pine/15 bg-white/80 text-sm font-semibold text-prof-black"
               >
                 {filterDepts.length === 0 ? 'Подразделения' : filterDepts.length === 1 ? departments.find(d => d.id === filterDepts[0])?.name : `Выбрано: ${filterDepts.length}`}
                 <svg className={`w-3.5 h-3.5 ${filterDropdownOpen ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
               </button>
-              {filterDropdownOpen && (
+              {filterDropdownOpen && filterDropdownRect && createPortal(
                 <>
-                  <div className="fixed inset-0 z-40" onClick={() => setFilterDropdownOpen(false)} />
-                  <div className="absolute left-1/2 -translate-x-1/2 top-full mt-2 w-56 max-h-64 overflow-y-auto rounded-xl border border-prof-pine/12 bg-white shadow-modal z-50 py-2">
+                  <div className="fixed inset-0 z-[9998]" onClick={() => setFilterDropdownOpen(false)} />
+                  <div
+                    className="fixed w-56 max-h-64 overflow-y-auto rounded-xl border border-prof-pine/12 bg-white shadow-modal z-[9999] py-2"
+                    style={{ left: filterDropdownRect.left + (filterDropdownRect.width - 224) / 2, top: filterDropdownRect.bottom + 8 }}
+                  >
                     {departments.map(d => (
                       <label key={d.id} className="flex items-center gap-2.5 px-3 py-2 hover:bg-prof-mint/20 cursor-pointer text-sm font-medium">
                         <input type="checkbox" checked={filterDepts.includes(d.id)} onChange={() => setFilterDepts(prev => prev.includes(d.id) ? prev.filter(x => x !== d.id) : [...prev, d.id])} className="rounded border-prof-pine/30 text-prof-pacific focus:ring-prof-pacific" />
@@ -255,16 +316,12 @@ function CustomToolbar({ label, onNavigate, onView, view, departments = [], filt
                       </button>
                     )}
                   </div>
-                </>
+                </>,
+                document.body
               )}
             </div>
           )}
-          <button
-            onClick={() => onNavigate(Navigate.TODAY)}
-            className="px-4 py-1.5 rounded-xl text-sm font-semibold text-prof-black/50 border border-prof-pine/10 hover:bg-prof-mint hover:text-prof-pine transition-all"
-          >
-            Сегодня
-          </button>
+          </div>
         </div>
       </div>
     </div>
@@ -347,17 +404,27 @@ export default function CalendarPage() {
     setEvents(list)
   }, [allEvents, filterDepts, filterLabels, ostalnyeDept?.id])
 
+  const sortedEvents = useMemo(() => {
+    if (currentView !== 'month') return events
+    return [...events].sort((a, b) => {
+      const aMulti = !isTimedEvent(a.start, a.end)
+      const bMulti = !isTimedEvent(b.start, b.end)
+      if (aMulti !== bMulti) return aMulti ? -1 : 1
+      return a.start.getTime() - b.start.getTime()
+    })
+  }, [events, currentView])
+
   const eventStyleGetter = (event: CalEvent) => {
     const color = event.departments?.[0]?.color || event.department?.color || '#18A7B5'
     const timed = isTimedEvent(event.start, event.end)
     const isTimeGrid = currentView === 'day' || currentView === 'week'
-    if (timed && !isTimeGrid) {
+    if (!isTimeGrid) {
       return {
-        style: { backgroundColor: 'transparent', color: 'var(--prof-black)', border: 'none', boxShadow: 'none' },
+        style: { backgroundColor: color, color: '#faf8f5', border: 'none', boxShadow: 'none' },
         className: 'rbc-event--timed',
       }
     }
-    return { style: { backgroundColor: color, color: '#fff', borderRadius: '8px', border: 'none' } }
+    return { style: { backgroundColor: color, color: '#faf8f5', borderRadius: '8px', border: 'none' } }
   }
 
   const EventWithView = useCallback((props: { event: CalEvent; title?: string }) => (
@@ -438,11 +505,11 @@ export default function CalendarPage() {
         </div>
       </div>
 
-      {/* Calendar */}
-      <div className="glass-panel rounded-2xl p-4 sm:p-6">
+      {/* Calendar — на мобильных: меньше отступов, больше места */}
+      <div className="glass-panel rounded-2xl p-3 sm:p-6 calendar-mobile">
         <Calendar
           localizer={localizer}
-          events={events}
+          events={sortedEvents}
           startAccessor="start"
           endAccessor="end"
           view={currentView}

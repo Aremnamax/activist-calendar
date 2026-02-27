@@ -113,13 +113,20 @@ body {
 
 .rbc-event:hover { filter: brightness(1.08); transition: all .15s ease; }
 
-/* timed events (month only): dot + title, no full block */
+/* month view events (timed + multiday): name left, time right, colored block, no dots */
 .rbc-event.rbc-event--timed {
   min-height: auto !important;
-  padding: 2px 6px !important;
+  padding: 3px 6px !important;
   box-shadow: none !important;
 }
-.rbc-event.rbc-event--timed .rbc-event-timed { display: flex; align-items: center; gap: 6px; }
+.rbc-event.rbc-event--timed .rbc-event-timed {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  gap: 8px !important;
+  width: 100% !important;
+  text-align: left !important;
+}
 
 /* day/week: events sized by library (top/height %), don't override */
 .rbc-time-view .rbc-event {
@@ -153,10 +160,12 @@ body {
 
 /* center text in calendar cells (month view) */
 .rbc-row-content,
-.rbc-event-content,
 .rbc-allday-cell { text-align: center !important; }
+.rbc-event-content { text-align: center !important; }
+.rbc-event.rbc-event--timed .rbc-event-content { text-align: left !important; }
 .rbc-off-range-bg { background: rgba(250,250,250,0.4) !important; }
 
+.rbc-month-row .rbc-row-content { min-height: 140px !important; }
 .rbc-month-row + .rbc-month-row { border-top: 1px solid rgba(17,96,98,0.06); }
 .rbc-day-bg + .rbc-day-bg { border-left: 1px solid rgba(17,96,98,0.06); }
 .rbc-header + .rbc-header { border-left: 1px solid rgba(17,96,98,0.06); }
@@ -166,6 +175,39 @@ body {
   width: 6px !important;
   height: 6px !important;
   border-radius: 50% !important;
+}
+
+/* ───── mobile calendar: больше места, читабельнее ───── */
+@media (max-width: 639px) {
+  .calendar-mobile .rbc-header {
+    font-size: 12px !important;
+    padding: 10px 2px !important;
+  }
+  .calendar-mobile .rbc-date-cell {
+    font-size: 14px !important;
+    padding: 8px 2px !important;
+  }
+  .calendar-mobile .rbc-date-cell > a {
+    min-width: 28px;
+    display: inline-block;
+  }
+  .calendar-mobile .rbc-event {
+    font-size: 11px !important;
+    padding: 3px 6px !important;
+  }
+  .calendar-mobile .rbc-event.rbc-event--timed {
+    padding: 4px 6px !important;
+  }
+  .calendar-mobile .rbc-event.rbc-event--timed .rbc-event-timed {
+    font-size: 11px !important;
+  }
+  .calendar-mobile .rbc-show-more {
+    font-size: 11px !important;
+  }
+  .calendar-mobile .rbc-month-view,
+  .calendar-mobile .rbc-time-view {
+    min-height: 65vh;
+  }
 }
 
 /* ───── util classes ───── */
