@@ -21,6 +21,7 @@ interface CalEvent {
   start: Date
   end: Date
   department?: { name: string; color: string }
+  departments?: { id: number; name: string; color: string }[]
   labels?: string[]
   resource?: any
 }
@@ -64,7 +65,15 @@ interface Department {
   color: string
 }
 
-function CustomToolbar({ label, onNavigate, onView, view }: ToolbarProps<CalEvent, object>) {
+interface CustomToolbarProps extends ToolbarProps<CalEvent, object> {
+  departments?: Department[]
+  filterDepts?: number[]
+  setFilterDepts?: (ids: number[] | ((prev: number[]) => number[])) => void
+  filterDropdownOpen?: boolean
+  setFilterDropdownOpen?: (v: boolean) => void
+}
+
+function CustomToolbar({ label, onNavigate, onView, view, departments = [], filterDepts = [], setFilterDepts, filterDropdownOpen, setFilterDropdownOpen }: CustomToolbarProps) {
   const views: { key: View; name: string }[] = [
     { key: 'month', name: 'Месяц' },
     { key: 'week', name: 'Неделя' },
@@ -118,8 +127,62 @@ function CustomToolbar({ label, onNavigate, onView, view }: ToolbarProps<CalEven
           </button>
         </div>
 
-        {/* Right: today button */}
-        <div className="flex justify-end">
+        {/* Right: filter + today button */}
+        <div className="flex items-center justify-end gap-2">
+          {departments.length > 0 && setFilterDepts && setFilterDropdownOpen && (
+            <div className="relative">
+              <button
+                onClick={() => setFilterDropdownOpen(!filterDropdownOpen)}
+                className="flex items-center gap-2 px-3 py-1.5 rounded-xl border border-prof-pine/15 bg-white/80 text-sm font-semibold text-prof-black hover:bg-prof-mint/30 transition-all"
+              >
+                {filterDepts.length === 0
+                  ? 'Подразделения'
+                  : filterDepts.length === 1
+                    ? departments.find(d => d.id === filterDepts[0])?.name || 'Выбрано'
+                    : `Выбрано: ${filterDepts.length}`}
+                <svg className={`w-3.5 h-3.5 transition-transform ${filterDropdownOpen ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
+              </button>
+              {filterDropdownOpen && (
+                <>
+                  <div className="fixed inset-0 z-40" onClick={() => setFilterDropdownOpen(false)} />
+                  <div className="absolute right-0 top-full mt-2 w-56 max-h-64 overflow-y-auto rounded-xl border border-prof-pine/12 bg-white shadow-modal z-50 py-2">
+                    {departments.map(d => {
+                      const isChecked = filterDepts.includes(d.id)
+                      return (
+                        <label
+                          key={d.id}
+                          className="flex items-center gap-2.5 px-3 py-2 hover:bg-prof-mint/20 cursor-pointer text-sm font-medium"
+                        >
+                          <input
+                            type="checkbox"
+                            checked={isChecked}
+                            onChange={() => {
+                              setFilterDepts(prev =>
+                                prev.includes(d.id)
+                                  ? prev.filter(x => x !== d.id)
+                                  : [...prev, d.id]
+                              )
+                            }}
+                            className="rounded border-prof-pine/30 text-prof-pacific focus:ring-prof-pacific"
+                          />
+                          <span className="w-[6px] h-[6px] rounded-full shrink-0" style={{ backgroundColor: d.color }} />
+                          {d.name}
+                        </label>
+                      )
+                    })}
+                    {filterDepts.length > 0 && (
+                      <button
+                        onClick={() => { setFilterDepts([]); setFilterDropdownOpen(false) }}
+                        className="w-full mt-2 pt-2 border-t border-prof-pine/8 text-xs font-bold text-prof-pacific hover:text-prof-pine px-3"
+                      >
+                        Сбросить
+                      </button>
+                    )}
+                  </div>
+                </>
+              )}
+            </div>
+          )}
           <button
             onClick={() => onNavigate(Navigate.TODAY)}
             className="px-4 py-1.5 rounded-xl text-sm font-semibold text-prof-black/50 border border-prof-pine/10 hover:bg-prof-mint hover:text-prof-pine transition-all"
@@ -152,7 +215,7 @@ function CustomToolbar({ label, onNavigate, onView, view }: ToolbarProps<CalEven
             </svg>
           </button>
         </div>
-        <div className="flex gap-1.5 flex-wrap justify-center">
+        <div className="flex gap-1.5 flex-wrap justify-center items-center">
           {views.map(v => (
             <button
               key={v.key}
@@ -166,6 +229,36 @@ function CustomToolbar({ label, onNavigate, onView, view }: ToolbarProps<CalEven
               {v.name}
             </button>
           ))}
+          {departments.length > 0 && setFilterDepts && setFilterDropdownOpen && (
+            <div className="relative">
+              <button
+                onClick={() => setFilterDropdownOpen(!filterDropdownOpen)}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-prof-pine/15 bg-white/80 text-sm font-semibold text-prof-black"
+              >
+                {filterDepts.length === 0 ? 'Подразделения' : filterDepts.length === 1 ? departments.find(d => d.id === filterDepts[0])?.name : `Выбрано: ${filterDepts.length}`}
+                <svg className={`w-3.5 h-3.5 ${filterDropdownOpen ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
+              </button>
+              {filterDropdownOpen && (
+                <>
+                  <div className="fixed inset-0 z-40" onClick={() => setFilterDropdownOpen(false)} />
+                  <div className="absolute left-1/2 -translate-x-1/2 top-full mt-2 w-56 max-h-64 overflow-y-auto rounded-xl border border-prof-pine/12 bg-white shadow-modal z-50 py-2">
+                    {departments.map(d => (
+                      <label key={d.id} className="flex items-center gap-2.5 px-3 py-2 hover:bg-prof-mint/20 cursor-pointer text-sm font-medium">
+                        <input type="checkbox" checked={filterDepts.includes(d.id)} onChange={() => setFilterDepts(prev => prev.includes(d.id) ? prev.filter(x => x !== d.id) : [...prev, d.id])} className="rounded border-prof-pine/30 text-prof-pacific focus:ring-prof-pacific" />
+                        <span className="w-[6px] h-[6px] rounded-full shrink-0" style={{ backgroundColor: d.color }} />
+                        {d.name}
+                      </label>
+                    ))}
+                    {filterDepts.length > 0 && (
+                      <button onClick={() => { setFilterDepts([]); setFilterDropdownOpen(false) }} className="w-full mt-2 pt-2 border-t border-prof-pine/8 text-xs font-bold text-prof-pacific px-3">
+                        Сбросить
+                      </button>
+                    )}
+                  </div>
+                </>
+              )}
+            </div>
+          )}
           <button
             onClick={() => onNavigate(Navigate.TODAY)}
             className="px-4 py-1.5 rounded-xl text-sm font-semibold text-prof-black/50 border border-prof-pine/10 hover:bg-prof-mint hover:text-prof-pine transition-all"
@@ -212,7 +305,8 @@ export default function CalendarPage() {
         title: e.title,
         start: new Date(`${toDate(e.dateStart)}T${toTime(e.timeStart)}`),
         end: new Date(`${toDate(e.dateEnd)}T${toTime(e.timeEnd)}`),
-        department: e.department,
+        department: (e.departments?.length ? e.departments[0] : e.department) ?? undefined,
+        departments: e.departments?.length ? e.departments : (e.department ? [e.department] : []),
         labels: e.labels || [],
         resource: e,
       }))
@@ -242,10 +336,10 @@ export default function CalendarPage() {
       const hasOstalnye = ostalnyeDept && filterDepts.includes(ostalnyeDept.id)
       const otherIds = filterDepts.filter(id => id !== ostalnyeDept?.id)
       list = list.filter(e => {
-        const deptId = e.resource?.departmentId
+        const deptIds = e.resource?.departmentIds?.length ? e.resource.departmentIds : (e.resource?.departmentId != null ? [e.resource.departmentId] : [])
         const deptName = e.department?.name
-        if (hasOstalnye && (deptId == null || deptName === 'Остальные')) return true
-        if (otherIds.length > 0 && otherIds.includes(deptId)) return true
+        if (hasOstalnye && (deptIds.length === 0 || deptName === 'Остальные')) return true
+        if (otherIds.length > 0 && deptIds.some((id: number) => otherIds.includes(id))) return true
         return false
       })
     }
@@ -254,7 +348,7 @@ export default function CalendarPage() {
   }, [allEvents, filterDepts, filterLabels, ostalnyeDept?.id])
 
   const eventStyleGetter = (event: CalEvent) => {
-    const color = event.department?.color || '#18A7B5'
+    const color = event.departments?.[0]?.color || event.department?.color || '#18A7B5'
     const timed = isTimedEvent(event.start, event.end)
     const isTimeGrid = currentView === 'day' || currentView === 'week'
     if (timed && !isTimeGrid) {
@@ -360,7 +454,19 @@ export default function CalendarPage() {
           onSelectSlot={handleSelectSlot}
           selectable={isOrganizer}
           style={{ minHeight: 600 }}
-          components={{ toolbar: CustomToolbar, event: EventWithView }}
+          components={{
+            toolbar: (props: ToolbarProps<CalEvent, object>) => (
+              <CustomToolbar
+                {...props}
+                departments={departments}
+                filterDepts={filterDepts}
+                setFilterDepts={setFilterDepts}
+                filterDropdownOpen={filterDropdownOpen}
+                setFilterDropdownOpen={setFilterDropdownOpen}
+              />
+            ),
+            event: EventWithView,
+          }}
           messages={{ showMore: (count) => `+${count}` }}
           culture="ru"
         />
@@ -393,67 +499,6 @@ export default function CalendarPage() {
                 </button>
               )
             })}
-          </div>
-        </div>
-      )}
-
-      {/* Department filter dropdown */}
-      {departments.length > 0 && (
-        <div className="mt-5 rounded-2xl px-5 py-4 bg-white/80 border border-prof-pine/8 shadow-card backdrop-blur-sm relative">
-          <div className="flex items-center justify-between">
-            <p className="text-xs font-bold text-prof-black/60 uppercase tracking-wider">Фильтр по подразделениям</p>
-            <div className="relative">
-              <button
-                onClick={() => setFilterDropdownOpen(!filterDropdownOpen)}
-                className="flex items-center gap-2 px-4 py-2 rounded-xl border border-prof-pine/15 bg-white/80 text-sm font-semibold text-prof-black hover:bg-prof-mint/30 transition-all"
-              >
-                {filterDepts.length === 0
-                  ? 'Все подразделения'
-                  : filterDepts.length === 1
-                    ? departments.find(d => d.id === filterDepts[0])?.name || 'Выбрано'
-                    : `Выбрано: ${filterDepts.length}`}
-                <svg className={`w-4 h-4 transition-transform ${filterDropdownOpen ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
-              </button>
-              {filterDropdownOpen && (
-                <>
-                  <div className="fixed inset-0 z-40" onClick={() => setFilterDropdownOpen(false)} />
-                  <div className="absolute right-0 top-full mt-2 w-64 max-h-72 overflow-y-auto rounded-xl border border-prof-pine/12 bg-white shadow-modal z-50 py-2">
-                    {departments.map(d => {
-                      const isChecked = filterDepts.includes(d.id)
-                      return (
-                        <label
-                          key={d.id}
-                          className="flex items-center gap-2.5 px-4 py-2.5 hover:bg-prof-mint/20 cursor-pointer text-sm font-medium"
-                        >
-                          <input
-                            type="checkbox"
-                            checked={isChecked}
-                            onChange={() => {
-                              setFilterDepts(prev =>
-                                prev.includes(d.id)
-                                  ? prev.filter(x => x !== d.id)
-                                  : [...prev, d.id]
-                              )
-                            }}
-                            className="rounded border-prof-pine/30 text-prof-pacific focus:ring-prof-pacific"
-                          />
-                          <span className="w-[6px] h-[6px] rounded-full shrink-0" style={{ backgroundColor: d.color }} />
-                          {d.name}
-                        </label>
-                      )
-                    })}
-                    {filterDepts.length > 0 && (
-                      <button
-                        onClick={() => { setFilterDepts([]); setFilterDropdownOpen(false) }}
-                        className="w-full mt-2 pt-2 border-t border-prof-pine/8 text-xs font-bold text-prof-pacific hover:text-prof-pine px-4"
-                      >
-                        Сбросить
-                      </button>
-                    )}
-                  </div>
-                </>
-              )}
-            </div>
           </div>
         </div>
       )}

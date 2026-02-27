@@ -4,6 +4,101 @@ import { useState, useEffect, useRef } from 'react'
 import { api, extractErrorMessage } from '@/lib/api'
 import { EVENT_LABELS } from '@/lib/constants'
 
+const TIME_SLOTS = Array.from({ length: 48 }, (_, i) => {
+  const h = Math.floor(i / 2)
+  const m = (i % 2) * 30
+  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`
+})
+
+function isValidTime(s: string): boolean {
+  return /^([01]?\d|2[0-3]):([0-5]\d)$/.test(s)
+}
+
+function TimeCarousel({ value, onChange, label }: { value: string; onChange: (v: string) => void; label: string }) {
+  const scrollRef = useRef<HTMLDivElement>(null)
+  const [manualInput, setManualInput] = useState(value)
+  const isManualValid = isValidTime(manualInput)
+  const displayValue = isManualValid ? manualInput : (TIME_SLOTS.includes(value) ? value : '09:00')
+
+  useEffect(() => {
+    setManualInput(value)
+  }, [value])
+
+  useEffect(() => {
+    const el = scrollRef.current
+    if (!el || !TIME_SLOTS.includes(displayValue)) return
+    const slot = el.querySelector(`[data-slot="${displayValue}"]`) as HTMLElement
+    if (slot) slot.scrollIntoView({ block: 'center', behavior: 'smooth' })
+  }, [displayValue])
+
+  const handleSlotClick = (slot: string) => {
+    onChange(slot)
+    setManualInput(slot)
+  }
+
+  const handleManualChange = (v: string) => {
+    const digits = v.replace(/\D/g, '')
+    if (digits.length === 4 && !v.includes(':')) {
+      const formatted = `${digits.slice(0, 2)}:${digits.slice(2)}`
+      setManualInput(formatted)
+      if (isValidTime(formatted)) onChange(formatted)
+      return
+    }
+    setManualInput(v)
+    if (isValidTime(v)) onChange(v)
+  }
+
+  return (
+    <div>
+      <label className="block text-xs font-semibold text-prof-black/60 mb-2">{label}</label>
+      <div className="flex gap-3 items-start">
+        <div
+          ref={scrollRef}
+          className="flex flex-col gap-0.5 overflow-y-auto min-w-[72px] rounded-xl border border-prof-pine/10 bg-white/60 px-3 py-2"
+          style={{ scrollSnapType: 'y mandatory', WebkitOverflowScrolling: 'touch', height: 'calc(3 * 1.75rem + 2 * 0.125rem)' }}
+        >
+          <div className="shrink-0 h-[calc((100%-1.75rem)/2)]" aria-hidden />
+          {TIME_SLOTS.map((slot) => {
+            const isSelected = displayValue === slot
+            return (
+              <button
+                key={slot}
+                type="button"
+                data-slot={slot}
+                onClick={() => handleSlotClick(slot)}
+                style={{ scrollSnapAlign: 'center' }}
+                className={`shrink-0 h-7 px-3 py-1.5 rounded-lg text-sm font-semibold transition-all duration-150 text-left flex items-center ${
+                  isSelected
+                    ? 'bg-prof-pacific text-white shadow-sm ring-2 ring-prof-pacific/40'
+                    : 'bg-transparent text-prof-black/60 hover:bg-prof-mint/60 hover:text-prof-pacific'
+                }`}
+              >
+                {slot}
+              </button>
+            )
+          })}
+          <div className="shrink-0 h-[calc((100%-1.75rem)/2)]" aria-hidden />
+        </div>
+        <div className="flex-1 min-w-0">
+          <input
+            type="text"
+            value={manualInput}
+            onChange={e => handleManualChange(e.target.value)}
+            placeholder="09:00"
+            maxLength={5}
+            className={`w-full px-4 py-2.5 rounded-xl border text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-prof-pacific/30 ${
+              isManualValid
+                ? 'border-prof-pine/10 text-prof-black bg-white/60'
+                : 'border-amber-300/60 text-amber-800 bg-amber-50/60'
+            }`}
+          />
+          <p className="text-[10px] text-prof-black/40 mt-1">Введите вручную или выберите</p>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 interface Department {
   id: number
   name: string
@@ -48,8 +143,8 @@ export default function EventRequestForm({
     title: '',
     dateStart: '',
     dateEnd: '',
-    timeStart: '09:00',
-    timeEnd: '18:00',
+    timeStart: '18:00',
+    timeEnd: '20:00',
     place: '',
     format: 'open' as 'open' | 'closed',
     departmentIds: [] as number[],
@@ -153,7 +248,7 @@ export default function EventRequestForm({
         description: data.description.trim() || ' ',
         postLink: data.postLink.trim() || null,
         regLink: data.regLink.trim() || null,
-        responsibleLink: data.responsibleLink.trim(),
+        responsibleLink: data.responsibleLink.trim() || null,
         labels: data.labels,
       }
 
@@ -177,7 +272,7 @@ export default function EventRequestForm({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!data.title.trim() || !data.dateStart || !data.place.trim() || !data.responsibleLink.trim()) return
+    if (!data.title.trim() || !data.dateStart || !data.place.trim()) return
 
     if (conflictEvents.length > 0) {
       setShowConflictModal(true)
@@ -283,23 +378,11 @@ export default function EventRequestForm({
                     className="w-full px-4 py-2.5 rounded-xl border border-prof-pine/10 text-sm text-prof-black focus:outline-none focus:ring-2 focus:ring-prof-pacific/30 bg-white/60 backdrop-blur-sm"
                   />
                 </div>
-                <div>
-                  <label className="block text-xs font-semibold text-prof-black/60 mb-1">Время начала</label>
-                  <input
-                    type="time"
-                    value={data.timeStart}
-                    onChange={e => update('timeStart', e.target.value)}
-                    className="w-full px-4 py-2.5 rounded-xl border border-prof-pine/10 text-sm text-prof-black focus:outline-none focus:ring-2 focus:ring-prof-pacific/30 bg-white/60 backdrop-blur-sm"
-                  />
+                <div className="col-span-2">
+                  <TimeCarousel label="Время начала" value={data.timeStart} onChange={v => update('timeStart', v)} />
                 </div>
-                <div>
-                  <label className="block text-xs font-semibold text-prof-black/60 mb-1">Время окончания</label>
-                  <input
-                    type="time"
-                    value={data.timeEnd}
-                    onChange={e => update('timeEnd', e.target.value)}
-                    className="w-full px-4 py-2.5 rounded-xl border border-prof-pine/10 text-sm text-prof-black focus:outline-none focus:ring-2 focus:ring-prof-pacific/30 bg-white/60 backdrop-blur-sm"
-                  />
+                <div className="col-span-2">
+                  <TimeCarousel label="Время окончания" value={data.timeEnd} onChange={v => update('timeEnd', v)} />
                 </div>
               </div>
             </div>
@@ -431,14 +514,13 @@ export default function EventRequestForm({
             </div>
 
             <div>
-              <label className="block text-xs font-bold text-prof-black/50 uppercase tracking-wider mb-1.5">Ссылка на ответственного <span className="text-red-500">*</span></label>
+              <label className="block text-xs font-bold text-prof-black/50 uppercase tracking-wider mb-1.5">Ссылка на ответственного</label>
               <input
-                type="url"
+                type="text"
                 value={data.responsibleLink}
                 onChange={e => update('responsibleLink', e.target.value)}
-                placeholder="https://..."
+                placeholder="https://t.me/prof"
                 className="w-full px-4 py-2.5 rounded-xl border border-prof-pine/15 text-sm text-prof-black focus:outline-none focus:ring-2 focus:ring-prof-pacific/30 bg-white/80"
-                required
               />
             </div>
 

@@ -32,6 +32,7 @@ interface RequestItem {
   responsibleLink?: string
   labels?: string[]
   conflictingEvents?: any[]
+  revisionSnapshot?: Record<string, any>
 }
 
 const statusDot: Record<string, string> = {
@@ -42,19 +43,33 @@ const statusDot: Record<string, string> = {
   approved: 'bg-emerald-500',
 }
 
+function toLinkHref(val: string): string {
+  const v = (val || '').trim()
+  if (!v) return '#'
+  if (/^(https?:\/\/|mailto:|tel:)/i.test(v)) return v
+  if (v.includes('@')) return `mailto:${v}`
+  if (/^[\d\s\-+()]+$/.test(v)) return `tel:${v.replace(/\s/g, '')}`
+  return v.startsWith('/') ? v : `https://${v}`
+}
+
 export default function AdminRequestsPage() {
   const [list, setList] = useState<RequestItem[]>([])
   const [departments, setDepartments] = useState<Department[]>([])
   const [loading, setLoading] = useState(true)
   const [moderateId, setModerateId] = useState<number | null>(null)
-  const [action, setAction] = useState<'approve' | 'reject'>('approve')
+  const [action, setAction] = useState<'approve' | 'reject' | 'needsWork'>('approve')
   const [commentText, setCommentText] = useState('')
   const [viewRequest, setViewRequest] = useState<RequestItem | null>(null)
   const [moderateConflictEvents, setModerateConflictEvents] = useState<any[]>([])
   const [moderateError, setModerateError] = useState('')
   const [moderateLoading, setModerateLoading] = useState(false)
   const [listError, setListError] = useState('')
+  const [filterTab, setFilterTab] = useState<'all' | 'pending' | 'approved' | 'rejected' | 'needsWork'>('all')
   const fetchedConflictForId = useRef<number | null>(null)
+
+  const filteredList = filterTab === 'all'
+    ? list
+    : list.filter(r => r.status === filterTab)
 
   const loadList = () => {
     setListError('')
@@ -108,10 +123,15 @@ export default function AdminRequestsPage() {
       setModerateError('Укажите причину отклонения')
       return
     }
+    if (action === 'needsWork' && !commentText.trim()) {
+      setModerateError('Укажите, что нужно изменить')
+      return
+    }
+    const statusMap = { approve: 'approved', reject: 'rejected', needsWork: 'needsWork' } as const
     setModerateLoading(true)
     try {
       await api.patch(`/event-requests/${moderateId}/moderate`, {
-        status: action === 'approve' ? 'approved' : 'rejected',
+        status: statusMap[action],
         comments: commentText || undefined,
       })
       setModerateId(null)
@@ -150,14 +170,41 @@ export default function AdminRequestsPage() {
             Повторить
           </button>
         </div>
-      ) : list.length === 0 ? (
-        <div className="text-center py-20">
-          <p className="text-prof-black/50 font-medium">Нет заявок</p>
-        </div>
       ) : (
+        <>
+          <div className="flex flex-wrap gap-2 mb-4">
+            {[
+              { key: 'all' as const, label: 'Все заявки' },
+              { key: 'pending' as const, label: 'На рассмотрении' },
+              { key: 'approved' as const, label: 'Одобренные' },
+              { key: 'rejected' as const, label: 'Отклонённые' },
+              { key: 'needsWork' as const, label: 'Редактируются' },
+            ].map(({ key, label }) => (
+              <button
+                key={key}
+                onClick={() => setFilterTab(key)}
+                className={`px-4 py-2 rounded-xl text-sm font-semibold transition-all ${
+                  filterTab === key
+                    ? 'bg-prof-pine text-white shadow-sm'
+                    : 'text-prof-black/50 hover:bg-prof-mint/50 border border-prof-pine/10'
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+          {filteredList.length === 0 ? (
+            <div className="text-center py-20">
+              <p className="text-prof-black/50 font-medium">
+                {list.length === 0 ? 'Нет заявок' : 'Нет заявок в этой категории'}
+              </p>
+            </div>
+          ) : (
         <div className="grid gap-3">
-          {list.map(r => {
-            const color = r.department?.color || '#18A7B5'
+          {filteredList.map(r => {
+            const deptIds = r.departmentIds ?? (r.departmentId ? [r.departmentId] : [])
+            const firstDept = deptIds[0] != null ? departments.find((d) => d.id === Number(deptIds[0])) : null
+            const color = firstDept?.color || r.department?.color || '#18A7B5'
             return (
               <div
                 key={r.id}
@@ -200,13 +247,13 @@ export default function AdminRequestsPage() {
                         Отклонить
                       </button>
                       <button
-                        onClick={() => openViewRequest(r)}
-                        className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold text-prof-black/50 hover:bg-prof-mint/30 border border-prof-pine/15 transition-all"
+                        onClick={() => { setModerateId(r.id); setAction('needsWork'); setCommentText(''); setModerateError('') }}
+                        className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold text-white bg-orange-500 hover:bg-orange-600 shadow-sm transition-all"
                       >
                         <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                           <path strokeLinecap="round" strokeLinejoin="round" d="M7 8h10M7 12h4m1 8l-4-4H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-3l-4 4z" />
                         </svg>
-                        Подробнее
+                        Комментировать
                       </button>
                     </div>
                   )}
@@ -215,6 +262,8 @@ export default function AdminRequestsPage() {
             )
           })}
         </div>
+          )}
+        </>
       )}
 
       {moderateId && (() => {
@@ -224,7 +273,7 @@ export default function AdminRequestsPage() {
           <div className="absolute inset-0 bg-prof-black/40 backdrop-blur-sm" />
           <div className="relative w-full max-w-md glass-card rounded-2xl shadow-modal border border-white/40 p-6 animate-modal-in" onClick={e => e.stopPropagation()}>
             <h3 className="text-lg font-bold text-prof-black mb-4">
-              {action === 'approve' ? 'Одобрить заявку' : 'Отклонить заявку'}
+              {action === 'approve' ? 'Одобрить заявку' : action === 'needsWork' ? 'Отправить на доработку' : 'Отклонить заявку'}
             </h3>
             {req?.hasConflict && (
               <div className="mb-4 p-3 bg-amber-50/80 border border-amber-200 rounded-xl">
@@ -236,18 +285,18 @@ export default function AdminRequestsPage() {
                     ))}
                   </div>
                 ) : (
-                  <p className="text-xs text-amber-700">Заявка пересекается с другими мероприятиями. Подробности — в «Подробнее».</p>
+                  <p className="text-xs text-amber-700">Заявка пересекается с другими мероприятиями. Нажмите на заявку для просмотра деталей.</p>
                 )}
               </div>
             )}
             <div>
               <label className="block text-xs font-bold text-prof-black/50 uppercase tracking-wider mb-1.5">
-                {action === 'reject' ? <>Причина отклонения <span className="text-red-500">*</span></> : 'Комментарий (необязательно)'}
+                {action === 'reject' ? <>Причина отклонения <span className="text-red-500">*</span></> : action === 'needsWork' ? <>Что нужно изменить <span className="text-red-500">*</span></> : 'Комментарий (необязательно)'}
               </label>
               <textarea
                 value={commentText}
                 onChange={e => { setCommentText(e.target.value); setModerateError('') }}
-                placeholder={action === 'reject' ? 'Укажите причину отклонения' : 'Комментарий'}
+                placeholder={action === 'reject' ? 'Укажите причину отклонения' : action === 'needsWork' ? 'Опишите, что нужно изменить в заявке' : 'Комментарий'}
                 rows={3}
                 className={`w-full px-4 py-2.5 rounded-xl border text-sm text-prof-black focus:outline-none focus:ring-2 focus:ring-prof-pacific/30 bg-white/80 resize-none ${moderateError ? 'border-red-400' : 'border-prof-pine/15'}`}
               />
@@ -257,9 +306,11 @@ export default function AdminRequestsPage() {
               <button
                 onClick={handleModerate}
                 disabled={moderateLoading}
-                className={`flex-1 px-4 py-2.5 rounded-xl text-sm font-bold text-white disabled:opacity-60 disabled:cursor-not-allowed ${action === 'approve' ? 'bg-emerald-500 hover:bg-emerald-600' : 'bg-red-500 hover:bg-red-600'}`}
+                className={`flex-1 px-4 py-2.5 rounded-xl text-sm font-bold text-white disabled:opacity-60 disabled:cursor-not-allowed ${
+                  action === 'approve' ? 'bg-emerald-500 hover:bg-emerald-600' : action === 'needsWork' ? 'bg-orange-500 hover:bg-orange-600' : 'bg-red-500 hover:bg-red-600'
+                }`}
               >
-                {moderateLoading ? 'Отправка...' : (action === 'approve' ? 'Одобрить' : 'Отклонить')}
+                {moderateLoading ? 'Отправка...' : (action === 'approve' ? 'Одобрить' : action === 'needsWork' ? 'Отправить на доработку' : 'Отклонить')}
               </button>
               <button onClick={() => { setModerateId(null); setModerateError('') }} className="px-4 py-2.5 rounded-xl text-sm font-semibold text-prof-black/50 border border-prof-pine/15">
                 Отмена
@@ -274,7 +325,18 @@ export default function AdminRequestsPage() {
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={() => setViewRequest(null)}>
           <div className="absolute inset-0 bg-prof-black/40 backdrop-blur-sm" />
           <div className="relative w-full max-w-2xl max-h-[90vh] glass-card rounded-2xl shadow-modal border border-white/40 overflow-hidden animate-modal-in" onClick={e => e.stopPropagation()}>
-            <div className="h-1.5" style={{ background: `linear-gradient(90deg, ${viewRequest.department?.color || '#18A7B5'}, ${(viewRequest.department?.color || '#18A7B5')}88)` }} />
+            <div
+              className="h-1.5"
+              style={{
+                background:
+                  viewRequest.departmentIds?.length && departments.length
+                    ? `linear-gradient(90deg, ${viewRequest.departmentIds
+                        .map((id) => departments.find((d) => d.id === Number(id))?.color)
+                        .filter(Boolean)
+                        .join(', ') || '#18A7B5'})`
+                    : `linear-gradient(90deg, ${viewRequest.department?.color || '#18A7B5'}, ${(viewRequest.department?.color || '#18A7B5')}88)`,
+              }}
+            />
             <div className="p-6 overflow-y-auto max-h-[85vh]">
               <div className="flex items-start justify-between gap-4 mb-6">
                 <h2 className="text-xl font-bold text-prof-black">{viewRequest.title}</h2>
@@ -286,8 +348,61 @@ export default function AdminRequestsPage() {
                 <InfoBlock label="Дата" value={`${viewRequest.dateStart} — ${viewRequest.dateEnd || viewRequest.dateStart}`} />
                 <InfoBlock label="Время" value={`${viewRequest.timeStart} — ${viewRequest.timeEnd}`} />
                 <InfoBlock label="Место" value={viewRequest.place || '—'} />
-                <InfoBlock label="Подразделение" value={viewRequest.department?.name || '—'} color={viewRequest.department?.color} />
+                {viewRequest.format && <InfoBlock label="Формат" value={viewRequest.format === 'closed' ? 'Закрытое' : 'Открытое'} />}
+                {viewRequest.limitParticipants != null && viewRequest.limitParticipants > 0 && (
+                  <InfoBlock label="Лимит участников" value={String(viewRequest.limitParticipants)} />
+                )}
+                {viewRequest.departmentIds?.length && departments.length ? (
+                  <div>
+                    <p className="text-xs font-bold text-prof-black/40 uppercase tracking-wider">Подразделение{viewRequest.departmentIds.length > 1 ? 'я' : ''}</p>
+                    <div className="flex flex-wrap gap-1.5 mt-1">
+                      {viewRequest.departmentIds.map((id) => {
+                        const d = departments.find((x) => x.id === Number(id))
+                        return d ? (
+                          <span
+                            key={d.id}
+                            className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold text-white"
+                            style={{ backgroundColor: d.color }}
+                          >
+                            <span className="w-[6px] h-[6px] rounded-full bg-white/50" />
+                            {d.name}
+                          </span>
+                        ) : null
+                      })}
+                    </div>
+                  </div>
+                ) : (
+                  <InfoBlock label="Подразделение" value={viewRequest.department?.name || '—'} color={viewRequest.department?.color} />
+                )}
               </div>
+              {(viewRequest.postLink || viewRequest.regLink || viewRequest.responsibleLink) ? (
+                <div className="mt-4 space-y-2">
+                  {viewRequest.postLink && (
+                    <div>
+                      <p className="text-xs font-bold text-prof-black/40 uppercase tracking-wider">Ссылка на пост</p>
+                      <a href={toLinkHref(viewRequest.postLink)} target="_blank" rel="noopener noreferrer" className="text-sm font-semibold text-prof-pacific hover:underline break-all">
+                        {viewRequest.postLink}
+                      </a>
+                    </div>
+                  )}
+                  {viewRequest.regLink && (
+                    <div>
+                      <p className="text-xs font-bold text-prof-black/40 uppercase tracking-wider">Регистрация</p>
+                      <a href={toLinkHref(viewRequest.regLink)} target="_blank" rel="noopener noreferrer" className="text-sm font-semibold text-prof-pacific hover:underline break-all">
+                        {viewRequest.regLink}
+                      </a>
+                    </div>
+                  )}
+                  {viewRequest.responsibleLink && (
+                    <div>
+                      <p className="text-xs font-bold text-prof-black/40 uppercase tracking-wider">Контакт организатора</p>
+                      <a href={toLinkHref(viewRequest.responsibleLink)} target="_blank" rel="noopener noreferrer" className="text-sm font-semibold text-prof-pacific hover:underline break-all">
+                        {viewRequest.responsibleLink}
+                      </a>
+                    </div>
+                  )}
+                </div>
+              ) : null}
               {viewRequest.labels?.length ? (
                 <div className="mt-4 flex flex-wrap gap-2">
                   {viewRequest.labels.map((l: string, i: number) => (
@@ -309,6 +424,9 @@ export default function AdminRequestsPage() {
                   <p className="text-sm text-amber-700">{viewRequest.comments}</p>
                 </div>
               )}
+              {viewRequest.revisionSnapshot && viewRequest.status === 'pending' && (
+                <RevisionChangesBlock current={viewRequest} snapshot={viewRequest.revisionSnapshot} departments={departments} />
+              )}
             </div>
           </div>
         </div>
@@ -328,6 +446,62 @@ function InfoBlock({ label, value, color }: { label: string; value: string; colo
       ) : (
         <p className="text-sm font-semibold text-prof-black mt-0.5">{value}</p>
       )}
+    </div>
+  )
+}
+
+const FIELD_LABELS: Record<string, string> = {
+  title: 'Название',
+  dateStart: 'Дата начала',
+  dateEnd: 'Дата окончания',
+  timeStart: 'Время начала',
+  timeEnd: 'Время окончания',
+  place: 'Место',
+  format: 'Формат',
+  departmentIds: 'Подразделения',
+  labels: 'Метки',
+  limitParticipants: 'Лимит участников',
+  description: 'Описание',
+  postLink: 'Ссылка на пост',
+  regLink: 'Ссылка на регистрацию',
+  responsibleLink: 'Контакт организатора',
+}
+
+function RevisionChangesBlock({ current, snapshot, departments }: { current: RequestItem; snapshot: Record<string, any>; departments: Department[] }) {
+  const fmtDept = (ids: number[]) => ids.map((id) => departments.find((d) => d.id === Number(id))?.name).filter(Boolean).join(', ') || '—'
+  const fmtLabels = (arr: string[]) => (Array.isArray(arr) ? arr.join(', ') : arr) || '—'
+  const fmtVal = (key: string, val: any) => {
+    if (val == null || val === '') return '—'
+    if (key === 'departmentIds') return fmtDept(Array.isArray(val) ? val : [])
+    if (key === 'labels') return fmtLabels(val)
+    if (key === 'format') return val === 'closed' ? 'Закрытое' : 'Открытое'
+    if ((key === 'dateStart' || key === 'dateEnd') && typeof val === 'string') return val.slice(0, 10)
+    return String(val)
+  }
+
+  const changes: { key: string; old: string; new: string }[] = []
+  const keys = ['title', 'dateStart', 'dateEnd', 'timeStart', 'timeEnd', 'place', 'format', 'departmentIds', 'labels', 'limitParticipants', 'description', 'postLink', 'regLink', 'responsibleLink']
+  for (const key of keys) {
+    const oldVal = snapshot[key]
+    const newVal = (current as any)[key]
+    const oldStr = fmtVal(key, oldVal)
+    const newStr = fmtVal(key, newVal)
+    if (oldStr !== newStr) changes.push({ key, old: oldStr, new: newStr })
+  }
+
+  if (changes.length === 0) return null
+  return (
+    <div className="mt-4 p-4 bg-emerald-50/80 border border-emerald-200 rounded-xl">
+      <p className="text-sm font-bold text-emerald-800 mb-2">Что изменено</p>
+      <div className="space-y-2">
+        {changes.map(({ key, old, new: newVal }) => (
+          <div key={key} className="text-sm">
+            <p className="font-semibold text-prof-black/70">{FIELD_LABELS[key] || key}</p>
+            <p className="text-prof-black/50 line-through">{old}</p>
+            <p className="text-emerald-700 font-medium">{newVal}</p>
+          </div>
+        ))}
+      </div>
     </div>
   )
 }

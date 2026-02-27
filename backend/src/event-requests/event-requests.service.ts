@@ -27,14 +27,16 @@ export class EventRequestsService {
     );
     const hasConflict = conflictingEvents.length > 0;
 
-    const deptId = Array.isArray(data.departmentIds) && data.departmentIds.length > 0
-      ? data.departmentIds[0]
-      : data.departmentId;
+    const rawDeptIds = Array.isArray(data.departmentIds) && data.departmentIds.length > 0
+      ? data.departmentIds
+      : data.departmentId != null ? [data.departmentId] : [];
+    const departmentIds = rawDeptIds.map((id) => (typeof id === 'string' ? parseInt(id, 10) : id)).filter((n) => !isNaN(n));
+    const deptId = departmentIds[0] ?? data.departmentId ?? null;
 
     const request = this.eventRequestsRepository.create({
       ...data,
       departmentId: deptId,
-      departmentIds: data.departmentIds || (data.departmentId ? [data.departmentId] : null),
+      departmentIds: departmentIds.length > 0 ? departmentIds : null,
       hasConflict,
       status: autoApprove
         ? EventRequestStatus.APPROVED
@@ -44,6 +46,7 @@ export class EventRequestsService {
     const saved = await this.eventRequestsRepository.save(request);
 
     if (autoApprove) {
+      const deptIds = saved.departmentIds?.length ? saved.departmentIds : (deptId != null ? [deptId] : []);
       const event = await this.eventsService.create({
         title: saved.title,
         dateStart: saved.dateStart,
@@ -52,7 +55,8 @@ export class EventRequestsService {
         timeEnd: saved.timeEnd,
         place: saved.place,
         format: saved.format as any,
-        departmentId: saved.departmentId ?? deptId,
+        departmentId: deptIds[0] ?? deptId,
+        departmentIds: deptIds,
         labels: saved.labels || [],
         limitParticipants: saved.limitParticipants,
         description: saved.description,
@@ -192,15 +196,17 @@ export class EventRequestsService {
     const updateData = { ...data } as any;
     if (Array.isArray(data.departmentIds)) {
       updateData.departmentId = data.departmentIds.length > 0 ? data.departmentIds[0] : null;
+      updateData.departmentIds = data.departmentIds;
+    }
+    if (existing?.status === EventRequestStatus.NEEDS_WORK) {
+      updateData.status = EventRequestStatus.PENDING;
     }
     await this.eventRequestsRepository.update(id, updateData);
 
-    if (
-      existing?.status === EventRequestStatus.APPROVED &&
-      data.status === EventRequestStatus.PENDING &&
-      existing.eventId
-    ) {
+    // Синхронизируем Event при любом редактировании одобренной заявки (чтобы календарь обновлялся)
+    if (existing?.status === EventRequestStatus.APPROVED && existing.eventId) {
       const updatedRequest = await this.findOne(id);
+      const deptIds = updatedRequest.departmentIds?.length ? updatedRequest.departmentIds : (updatedRequest.departmentId ? [updatedRequest.departmentId] : []);
       await this.eventsService.updateFromRequest(existing.eventId, {
         title: updatedRequest.title,
         dateStart: updatedRequest.dateStart,
@@ -210,6 +216,7 @@ export class EventRequestsService {
         place: updatedRequest.place,
         format: updatedRequest.format,
         departmentId: updatedRequest.departmentId,
+        departmentIds: deptIds,
         labels: updatedRequest.labels || [],
         limitParticipants: updatedRequest.limitParticipants,
         description: updatedRequest.description,
@@ -261,15 +268,38 @@ export class EventRequestsService {
     if (status === EventRequestStatus.REJECTED && (!comments || !comments.trim())) {
       throw new BadRequestException('При отклонении необходимо указать причину');
     }
+    if (status === EventRequestStatus.NEEDS_WORK && (!comments || !comments.trim())) {
+      throw new BadRequestException('Укажите, что нужно изменить');
+    }
 
     const updateData: Partial<EventRequest> = { status };
     if (comments !== undefined && comments !== null) {
       updateData.comments = comments;
     }
+    if (status === EventRequestStatus.NEEDS_WORK) {
+      updateData.revisionSnapshot = {
+        title: request.title,
+        dateStart: this.toDateString(request.dateStart),
+        dateEnd: this.toDateString(request.dateEnd),
+        timeStart: request.timeStart,
+        timeEnd: request.timeEnd,
+        place: request.place,
+        format: request.format,
+        departmentId: request.departmentId,
+        departmentIds: request.departmentIds || [],
+        labels: request.labels || [],
+        limitParticipants: request.limitParticipants,
+        description: request.description,
+        postLink: request.postLink,
+        regLink: request.regLink,
+        responsibleLink: request.responsibleLink,
+      };
+    }
     await this.eventRequestsRepository.update(id, updateData);
 
     if (status === EventRequestStatus.APPROVED) {
-      const deptId = (request.departmentIds?.length ? request.departmentIds[0] : null) ?? request.departmentId;
+      const deptIds = request.departmentIds?.length ? request.departmentIds : (request.departmentId ? [request.departmentId] : []);
+      const deptId = deptIds[0] ?? request.departmentId;
       if (request.eventId) {
         await this.eventsService.updateFromRequest(request.eventId, {
           title: request.title,
@@ -280,6 +310,7 @@ export class EventRequestsService {
           place: request.place,
           format: request.format,
           departmentId: deptId,
+          departmentIds: deptIds,
           labels: request.labels || [],
           limitParticipants: request.limitParticipants,
           description: request.description,
@@ -298,6 +329,7 @@ export class EventRequestsService {
           place: request.place,
           format: request.format as any,
           departmentId: deptId ?? request.departmentId,
+          departmentIds: deptIds,
           labels: request.labels || [],
           limitParticipants: request.limitParticipants,
           description: request.description,

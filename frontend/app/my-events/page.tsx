@@ -16,8 +16,23 @@ interface SubscriptionItem {
     timeStart: string
     timeEnd: string
     place: string
+    format?: string
+    limitParticipants?: number | null
+    postLink?: string
+    regLink?: string
+    responsibleLink?: string
     department?: { name: string; color: string }
+    departments?: { id: number; name: string; color: string }[]
   }
+}
+
+function toLinkHref(val: string): string {
+  const v = (val || '').trim()
+  if (!v) return '#'
+  if (/^(https?:\/\/|mailto:|tel:)/i.test(v)) return v
+  if (v.includes('@')) return `mailto:${v}`
+  if (/^[\d\s\-+()]+$/.test(v)) return `tel:${v.replace(/\s/g, '')}`
+  return v.startsWith('/') ? v : `https://${v}`
 }
 
 function toCalEvent(s: SubscriptionItem) {
@@ -28,8 +43,9 @@ function toCalEvent(s: SubscriptionItem) {
     title: e.title,
     start: toDate(e.dateStart, e.timeStart),
     end: toDate(e.dateEnd || e.dateStart, e.timeEnd),
-    department: e.department,
-    resource: { place: e.place },
+    department: (e.departments?.length ? e.departments[0] : e.department) ?? undefined,
+    departments: e.departments ?? (e.department ? [e.department] : []),
+    resource: { ...e, place: e.place },
   }
 }
 
@@ -94,7 +110,8 @@ export default function MyEventsPage() {
       ) : (
         <div className="grid gap-3">
           {list.map(s => {
-            const c = s.event.department?.color || '#18A7B5'
+            const depts = s.event.departments ?? (s.event.department ? [s.event.department] : [])
+            const c = depts[0]?.color || '#18A7B5'
             const calEvent = toCalEvent(s)
             return (
               <div
@@ -103,9 +120,17 @@ export default function MyEventsPage() {
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                   <div className="flex-1 min-w-0 cursor-pointer" onClick={() => setSelectedEvent(calEvent)}>
                     <div className="flex items-center gap-2.5 mb-1.5 flex-wrap">
-                      <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold text-white" style={{ backgroundColor: c }}>
-                        <span className="w-[6px] h-[6px] rounded-full bg-white/50" />{s.event.department?.name || '—'}
-                      </span>
+                      {depts.length > 0 ? (
+                        depts.map((d) => (
+                          <span key={d.id} className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold text-white" style={{ backgroundColor: d.color }}>
+                            <span className="w-[6px] h-[6px] rounded-full bg-white/50" />{d.name}
+                          </span>
+                        ))
+                      ) : (
+                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold text-white" style={{ backgroundColor: c }}>
+                          <span className="w-[6px] h-[6px] rounded-full bg-white/50" />—
+                        </span>
+                      )}
                       <h3 className="text-base font-bold text-prof-black truncate">{s.event.title}</h3>
                     </div>
                     <p className="text-xs text-prof-black/40">
@@ -113,6 +138,33 @@ export default function MyEventsPage() {
                       {' — '}
                       {s.event.place}
                     </p>
+                    {(s.event.format || (s.event.limitParticipants != null && s.event.limitParticipants > 0) || s.event.postLink || s.event.regLink || s.event.responsibleLink) && (
+                      <div className="flex flex-wrap items-center gap-2 mt-2">
+                        {s.event.format && (
+                          <span className="inline-flex px-2 py-0.5 rounded-lg text-[11px] font-semibold bg-prof-pacific/10 text-prof-pacific">
+                            {s.event.format === 'closed' ? 'Закрытое' : 'Открытое'}
+                          </span>
+                        )}
+                        {s.event.limitParticipants != null && s.event.limitParticipants > 0 && (
+                          <span className="text-[11px] text-prof-black/50">Лимит: {s.event.limitParticipants} чел.</span>
+                        )}
+                        {s.event.postLink && (
+                          <a href={toLinkHref(s.event.postLink)} target="_blank" rel="noopener noreferrer" onClick={e => e.stopPropagation()} className="text-[11px] font-semibold text-prof-pacific hover:underline">
+                            Пост
+                          </a>
+                        )}
+                        {s.event.regLink && (
+                          <a href={toLinkHref(s.event.regLink)} target="_blank" rel="noopener noreferrer" onClick={e => e.stopPropagation()} className="text-[11px] font-semibold text-prof-pacific hover:underline">
+                            Регистрация
+                          </a>
+                        )}
+                        {s.event.responsibleLink && (
+                          <a href={toLinkHref(s.event.responsibleLink)} target="_blank" rel="noopener noreferrer" onClick={e => e.stopPropagation()} className="text-[11px] font-semibold text-prof-pacific hover:underline">
+                            Организатор
+                          </a>
+                        )}
+                      </div>
+                    )}
                   </div>
                   <button
                     onClick={() => handleUnsubscribe(s.eventId)}

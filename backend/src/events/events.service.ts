@@ -1,7 +1,8 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, Between } from 'typeorm';
+import { Repository, Between, In } from 'typeorm';
 import { Event } from './event.entity';
+import { Department } from '../departments/department.entity';
 import { Subscription } from '../subscriptions/subscription.entity';
 import { EventChangeLog } from '../event-change-logs/event-change-log.entity';
 import { EventStatus } from '../config/constants';
@@ -11,6 +12,8 @@ export class EventsService {
   constructor(
     @InjectRepository(Event)
     private eventsRepository: Repository<Event>,
+    @InjectRepository(Department)
+    private departmentsRepository: Repository<Department>,
     @InjectRepository(Subscription)
     private subscriptionsRepository: Repository<Subscription>,
     @InjectRepository(EventChangeLog)
@@ -36,15 +39,18 @@ export class EventsService {
       place: string;
       format: string;
       departmentId?: number | null;
+      departmentIds?: number[];
       labels?: string[];
       limitParticipants?: number | null;
       description: string;
       postLink?: string | null;
       regLink?: string | null;
-      responsibleLink: string;
+      responsibleLink?: string | null;
       repeat?: any;
     },
   ): Promise<Event> {
+    const deptIds = data.departmentIds ?? (data.departmentId != null ? [data.departmentId] : []);
+    const deptId = deptIds.length > 0 ? deptIds[0] : null;
     await this.eventsRepository.update(eventId, {
       title: data.title,
       dateStart: data.dateStart,
@@ -53,13 +59,14 @@ export class EventsService {
       timeEnd: data.timeEnd,
       place: data.place,
       format: data.format as any,
-      departmentId: data.departmentId ?? null,
+      departmentId: deptId,
+      departmentIds: deptIds,
       labels: data.labels || [],
       limitParticipants: data.limitParticipants ?? null,
       description: data.description,
       postLink: data.postLink ?? null,
       regLink: data.regLink ?? null,
-      responsibleLink: data.responsibleLink,
+      responsibleLink: data.responsibleLink ?? null,
       repeat: data.repeat ?? null,
     });
     return this.eventsRepository.findOne({ where: { id: eventId } });
@@ -79,12 +86,23 @@ export class EventsService {
     }
 
     const events = await query.getMany();
+    const allDeptIds = [...new Set(events.flatMap((e) => e.departmentIds || (e.departmentId ? [e.departmentId] : [])))];
+    const departmentsMap = new Map<number, Department>();
+    if (allDeptIds.length > 0) {
+      const depts = await this.departmentsRepository.find({ where: { id: In(allDeptIds) } });
+      depts.forEach((d) => departmentsMap.set(d.id, d));
+    }
 
-    return events.map((e) => ({
-      ...e,
-      dateStart: this.toDateString(e.dateStart),
-      dateEnd: this.toDateString(e.dateEnd),
-    }));
+    return events.map((e) => {
+      const ids = e.departmentIds?.length ? e.departmentIds : (e.departmentId ? [e.departmentId] : []);
+      const departments = ids.map((id) => departmentsMap.get(id)).filter(Boolean);
+      return {
+        ...e,
+        departments,
+        dateStart: this.toDateString(e.dateStart),
+        dateEnd: this.toDateString(e.dateEnd),
+      };
+    });
   }
 
   private toDateString(d: any): string {
@@ -104,8 +122,11 @@ export class EventsService {
       relations: ['department', 'subscriptions'],
     });
     if (!event) return null;
+    const ids = event.departmentIds?.length ? event.departmentIds : (event.departmentId ? [event.departmentId] : []);
+    const departments = ids.length > 0 ? await this.departmentsRepository.find({ where: { id: In(ids) } }) : [];
     return {
       ...event,
+      departments,
       dateStart: this.toDateString(event.dateStart),
       dateEnd: this.toDateString(event.dateEnd),
     };

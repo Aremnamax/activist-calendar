@@ -11,6 +11,7 @@ interface Department { id: number; name: string; color: string }
 interface RequestItem {
   id: number; title: string; status: string; comments: string | null
   hasConflict: boolean; createdAt: string; departmentId: number | null
+  departmentIds?: number[]
   eventId?: number
   dateStart?: string; dateEnd?: string; timeStart?: string; timeEnd?: string
   place?: string; format?: string; limitParticipants?: number | null
@@ -55,7 +56,7 @@ export default function MyRequestsPage() {
       timeEnd: editRequest.timeEnd,
       place: editRequest.place,
       format: editRequest.format === 'closed' ? 'closed' : 'open',
-      departmentIds: editRequest.departmentIds?.length ? editRequest.departmentIds : (editRequest.departmentId ? [editRequest.departmentId] : []),
+      departmentIds: (editRequest.departmentIds?.length ? editRequest.departmentIds : (editRequest.departmentId ? [editRequest.departmentId] : [])).map((id: number | string) => Number(id)),
       departmentId: editRequest.departmentId,
       limitParticipants: editRequest.limitParticipants,
       hasLimit: !!editRequest.limitParticipants,
@@ -122,9 +123,13 @@ export default function MyRequestsPage() {
                       {new Date(r.createdAt).toLocaleDateString('ru-RU', { day: '2-digit', month: 'long', year: 'numeric' })}
                     </p>
                     {r.comments && (
-                      <div className="mt-3 flex items-start gap-2 bg-amber-50/80 border border-amber-100 rounded-xl px-4 py-3">
-                        <svg className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M7 8h10M7 12h4m1 8l-4-4H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-3l-4 4z" /></svg>
-                        <p className="text-sm text-amber-700">{r.comments}</p>
+                      <div className={`mt-3 flex items-start gap-2 rounded-xl px-4 py-3 ${r.status === 'needsWork' ? 'bg-orange-50/80 border border-orange-200' : 'bg-amber-50/80 border border-amber-100'}`}>
+                        <svg className={`w-4 h-4 shrink-0 mt-0.5 ${r.status === 'needsWork' ? 'text-orange-500' : 'text-amber-500'}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M7 8h10M7 12h4m1 8l-4-4H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-3l-4 4z" /></svg>
+                        <div>
+                          {r.status === 'needsWork' && <p className="text-xs font-bold text-orange-700 uppercase tracking-wider mb-0.5">Комментарий администратора</p>}
+                          <p className={`text-sm ${r.status === 'needsWork' ? 'text-orange-800' : 'text-amber-700'}`}>{r.comments}</p>
+                          {r.status === 'needsWork' && <p className="text-xs text-orange-600 mt-1">Отредактируйте заявку и сохраните — она будет отправлена на повторную модерацию</p>}
+                        </div>
                       </div>
                     )}
                   </div>
@@ -132,7 +137,7 @@ export default function MyRequestsPage() {
                     {canEdit(r) && (
                       <button onClick={() => { setEditRequest(r); setEditingId(r.id) }}
                         className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-sm font-bold text-white gradient-prof shadow-sm hover:shadow-md transition-all"
-                        title={r.status === 'approved' ? 'После редактирования заявка пойдёт на повторную модерацию' : undefined}
+                        title={r.status === 'approved' ? 'После редактирования заявка пойдёт на повторную модерацию' : r.status === 'needsWork' ? 'Внесите изменения и сохраните — заявка отправится на модерацию' : undefined}
                       >
                         <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
                         {r.status === 'approved' ? 'Изменить' : 'Редактировать'}

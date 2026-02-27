@@ -2,6 +2,15 @@
 
 import { useEffect } from 'react'
 
+function toHref(val: string): string {
+  const v = (val || '').trim()
+  if (!v) return '#'
+  if (/^(https?:\/\/|mailto:|tel:)/i.test(v)) return v
+  if (v.includes('@')) return `mailto:${v}`
+  if (/^[\d\s\-+()]+$/.test(v)) return `tel:${v.replace(/\s/g, '')}`
+  return v.startsWith('/') ? v : `https://${v}`
+}
+
 interface EventModalProps {
   event: any
   isOpen: boolean
@@ -34,7 +43,8 @@ export default function EventModal({
 
   if (!isOpen || !event) return null
 
-  const deptColor = event.department?.color || '#18A7B5'
+  const departments = event.departments ?? event.resource?.departments ?? (event.department ? [event.department] : [])
+  const deptColor = departments[0]?.color || event.department?.color || '#18A7B5'
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={onClose}>
@@ -43,13 +53,21 @@ export default function EventModal({
 
       {/* modal */}
       <div
-        className="relative w-full max-w-lg glass-card rounded-2xl shadow-modal border border-white/40 overflow-hidden animate-modal-in"
+        className="relative w-full max-w-lg max-h-[90vh] flex flex-col glass-card rounded-2xl shadow-modal border border-white/40 overflow-hidden animate-modal-in"
         onClick={(e) => e.stopPropagation()}
       >
         {/* color bar */}
-        <div className="h-1.5" style={{ background: `linear-gradient(90deg, ${deptColor}, ${deptColor}88)` }} />
+        <div
+          className="h-1.5 shrink-0"
+          style={{
+            background:
+              departments.length > 1
+                ? `linear-gradient(90deg, ${departments.map((d: { color: string }) => d.color).join(', ')})`
+                : `linear-gradient(90deg, ${deptColor}, ${deptColor}88)`,
+          }}
+        />
 
-        <div className="p-6 sm:p-8">
+        <div className="flex-1 min-h-0 overflow-y-auto p-6 sm:p-8">
           {/* header */}
           <div className="flex items-start justify-between gap-4 mb-6">
             <h2 className="text-xl sm:text-2xl font-bold text-prof-black leading-tight">{event.title}</h2>
@@ -85,6 +103,29 @@ export default function EventModal({
               </div>
             </div>
 
+            {/* format & limit */}
+            {(event.resource?.format || (event.resource?.limitParticipants != null && event.resource?.limitParticipants > 0)) && (
+              <div className="flex items-start gap-3">
+                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-prof-mint text-prof-pine">
+                  <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
+                  </svg>
+                </span>
+                <div className="flex flex-wrap gap-2">
+                  {event.resource?.format && (
+                    <span className="inline-flex px-2.5 py-1 rounded-lg text-xs font-semibold bg-prof-pacific/10 text-prof-pacific">
+                      {event.resource.format === 'closed' ? 'Закрытое' : 'Открытое'}
+                    </span>
+                  )}
+                  {event.resource?.limitParticipants != null && event.resource?.limitParticipants > 0 && (
+                    <span className="inline-flex px-2.5 py-1 rounded-lg text-xs font-semibold text-prof-black/70">
+                      Лимит: {event.resource.limitParticipants} чел.
+                    </span>
+                  )}
+                </div>
+              </div>
+            )}
+
             {/* place */}
             {event.resource?.place && (
               <div className="flex items-start gap-3">
@@ -101,8 +142,8 @@ export default function EventModal({
               </div>
             )}
 
-            {/* department */}
-            {event.department && (
+            {/* departments */}
+            {departments.length > 0 && (
               <div className="flex items-start gap-3">
                 <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-prof-mint text-prof-pine">
                   <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
@@ -110,14 +151,19 @@ export default function EventModal({
                   </svg>
                 </span>
                 <div>
-                  <p className="text-xs font-semibold text-prof-black/40 uppercase tracking-wider">Подразделение</p>
-                  <span
-                    className="inline-flex mt-1 items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold text-white"
-                    style={{ backgroundColor: deptColor }}
-                  >
-                    <span className="w-[6px] h-[6px] rounded-full bg-white/50" />
-                    {event.department.name}
-                  </span>
+                  <p className="text-xs font-semibold text-prof-black/40 uppercase tracking-wider">Подразделение{departments.length > 1 ? 'я' : ''}</p>
+                  <div className="flex flex-wrap gap-1.5 mt-1">
+                    {departments.map((d: { id?: number; name: string; color: string }) => (
+                      <span
+                        key={d.id ?? d.name}
+                        className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold text-white"
+                        style={{ backgroundColor: d.color }}
+                      >
+                        <span className="w-[6px] h-[6px] rounded-full bg-white/50" />
+                        {d.name}
+                      </span>
+                    ))}
+                  </div>
                 </div>
               </div>
             )}
@@ -127,6 +173,34 @@ export default function EventModal({
               <div className="bg-prof-mint/30 rounded-xl p-4 mt-1">
                 <p className="text-xs font-semibold text-prof-black/40 uppercase tracking-wider mb-1.5">Описание</p>
                 <p className="text-sm text-prof-black/70 leading-relaxed whitespace-pre-line">{event.resource.description}</p>
+              </div>
+            )}
+
+            {/* links */}
+            {(event.resource?.postLink || event.resource?.regLink || event.resource?.responsibleLink) && (
+              <div className="flex items-start gap-3">
+                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-prof-mint text-prof-pine">
+                  <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                  </svg>
+                </span>
+                <div className="flex flex-col gap-2 min-w-0">
+                  {event.resource.postLink && (
+                    <a href={toHref(event.resource.postLink)} target="_blank" rel="noopener noreferrer" className="text-sm font-semibold text-prof-pacific hover:underline truncate">
+                      Ссылка на пост
+                    </a>
+                  )}
+                  {event.resource.regLink && (
+                    <a href={toHref(event.resource.regLink)} target="_blank" rel="noopener noreferrer" className="text-sm font-semibold text-prof-pacific hover:underline truncate">
+                      Регистрация
+                    </a>
+                  )}
+                  {event.resource.responsibleLink && (
+                    <a href={toHref(event.resource.responsibleLink)} target="_blank" rel="noopener noreferrer" className="text-sm font-semibold text-prof-pacific hover:underline truncate">
+                      Контакт организатора
+                    </a>
+                  )}
+                </div>
               </div>
             )}
 

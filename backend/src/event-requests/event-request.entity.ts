@@ -35,6 +35,9 @@ export class EventRequest {
   @Column('text', { nullable: true })
   comments: string; // комментарии администратора
 
+  @Column('json', { nullable: true })
+  revisionSnapshot: Record<string, any>; // снимок заявки при отправке на доработку (для отображения изменений)
+
   @Column()
   organizerId: number;
 
@@ -67,7 +70,21 @@ export class EventRequest {
   @Column({ nullable: true })
   departmentId: number;
 
-  @Column('simple-array', { nullable: true })
+  @Column('simple-array', {
+    nullable: true,
+    transformer: {
+      from: (v: unknown): number[] => {
+        if (v == null) return [];
+        if (Array.isArray(v)) return v.map((x) => Number(x)).filter((n) => !isNaN(n));
+        if (typeof v === 'string') return v ? v.split(',').map(Number).filter((n) => !isNaN(n)) : [];
+        return [];
+      },
+      to: (v: number[] | string[] | null | undefined) => {
+        if (!v || !Array.isArray(v) || v.length === 0) return null;
+        return v.map((x) => String(x)).join(',');
+      },
+    },
+  })
   departmentIds: number[];
 
   @ManyToOne(() => Department, { nullable: true })
@@ -89,7 +106,7 @@ export class EventRequest {
   @Column({ nullable: true })
   regLink: string;
 
-  @Column()
+  @Column({ nullable: true })
   responsibleLink: string;
 
   @Column('json', { nullable: true })
